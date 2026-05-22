@@ -141,3 +141,27 @@ dist
 vite.config.js.timestamp-*
 vite.config.ts.timestamp-*
 .vite/
+#desdea aca añadiii yo
+# Expo
+.expo/
+expo-env.d.ts
+
+# React Native
+android/
+ios/
+
+# Metro
+.metro-health-check*
+
+# IntelliJ IDEA
+.idea/
+*.iml
+out/
+
+# MacOS (opcional pero recomendado)
+.DS_Store
+
+# Claude AI
+.claude/
+CLAUDE.md
+AGENTS.md
