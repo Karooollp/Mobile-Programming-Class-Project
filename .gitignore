@@ -66,7 +66,7 @@ web_modules/
 .yarn-integrity
 
 # dotenv environment variable files
-.env
+MobileProgrammingClassProject/.env
 .env.*
 !.env.example
 
@@ -165,3 +165,7 @@ out/
 .claude/
 CLAUDE.md
 AGENTS.md
+
+# .env
+
+.env

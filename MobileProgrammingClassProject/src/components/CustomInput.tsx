@@ -3,7 +3,7 @@ import { useState } from "react";
 import { Text, TextInput, TouchableOpacity, View, StyleSheet, KeyboardTypeOptions } from "react-native";
 import { get } from "react-native/Libraries/TurboModule/TurboModuleRegistry";
 type Props={
-    type?: "text"|"email"|"password"|"number";
+    type?: "text"|"email"|"password"|"number"| "phone";
     placeholder: string;
     value:string;
     onChange:(text:string)=> void
