@@ -1,8 +1,8 @@
 // Representa variqbles como edad, genero,enfermedad y observaciones
 export type UserProfile = {
-  id: string;
-  firstName: string;
-  lastName: string;
+  user_id: string;
+  first_Name: string;
+  last_Name: string;
   age: number | null;
   gender: string | null;
   birthDate: string | null;

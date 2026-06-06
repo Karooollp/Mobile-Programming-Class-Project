@@ -7,9 +7,9 @@ type Props={
     placeholder: string;
     value:string;
     onChange:(text:string)=> void
-
+    error?: string;
 }
-export default function CustomInput({type="text",placeholder,value, onChange}: Props){
+export default function CustomInput({type="text",placeholder,value, onChange, error}: Props){
     const [isSecureText, setIsSecureText]=useState(type==="password" )
     const isPasswordField=type==="password";
     const icon:  typeof MaterialIcons["name"] |undefined=
@@ -21,18 +21,11 @@ export default function CustomInput({type="text",placeholder,value, onChange}: P
             type==="number" ? "phone-pad":
                 "default";
 
-    const getError=()=>{
-        if (type ==="email"&& !value.includes("@")) return"Correo Invalido mi lord";
-        if(type==="password" && value.length<4) return "Contraseña demasiada corta";
-        if(type==="number" &&( value.length !=8 || value.includes("-"))) return "Numero invalido";
-
-    }
-    const error=getError();
-
+  
     return (
         //wrapper
         <View style={styles.wrapper}>
-            <View style={[styles.inputContainer, error&& styles.inputError]}>
+            <View style={[styles.inputContainer, error&& styles.inputContainerError,]}>
                 <MaterialIcons   name={icon as any }size={25} color="#00000"/>
                 <TextInput
                     placeholder ={placeholder}
@@ -77,6 +70,9 @@ const styles=StyleSheet.create({
         backgroundColor:"#e3dbdb",
         paddingHorizontal:10,
     },
+  inputContainerError:{
+    borderColor:"red",
+  },
 
     input:{
         width:"80%",

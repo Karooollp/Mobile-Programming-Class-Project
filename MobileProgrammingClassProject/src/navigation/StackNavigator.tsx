@@ -11,9 +11,9 @@ export type RootStackParamList={
     Login:undefined,
     Home:{email:string},
     UserTabs:undefined,
-    Register: undefined,
-    Profile: undefined,
-    EditProfile: undefined,
+  Register: undefined;
+  Profile: undefined;
+  EditProfile: undefined;
 }
 //Crear el stack navigator el cual va a manejar la navegación
 const Stack =createNativeStackNavigator <RootStackParamList>();

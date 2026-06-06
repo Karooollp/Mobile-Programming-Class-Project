@@ -7,9 +7,9 @@ type CaremapHealthContextsType = {
 };
 
 const defaultProfile: UserProfile = {
-  id: "",
-  firstName: "",
-  lastName: "",
+  user_id: "",
+  first_Name: "",
+  last_Name: "",
   age: null,
   gender: null,
   birthDate: null,

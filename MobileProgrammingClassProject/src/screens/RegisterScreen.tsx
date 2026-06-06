@@ -1,111 +1,254 @@
-import { StatusBar } from 'expo-status-bar';
-import { StyleSheet, Text, View } from 'react-native';
-import CustomButton from '..//components/CustomButton';
-import CustomInput from '..//components/CustomInput';
-import { useState } from 'react';
-import { Alert } from "react-native";
-import { Supabase } from "../lib/Supabase";
+import { useState } from "react";
+import {
+  Alert,
+  Text,
+  View,
+  StyleSheet,
+} from "react-native";
+
+import CustomButton from "../components/CustomButton";
+import CustomInput from "../components/CustomInput";
 import LoginAndRegisterCard from "../components/LoginAndRegisterCard";
-import ProfileScreen from "./ProfileScreen";
 
+import { Supabase } from "../lib/Supabase";
+import { useCaremapHealth } from "../contexts/CaremapHealthContexts";
 
+import {
+  validateText,
+  validateEmail,
+  validatePassword,
+} from "../utils/validators/profileValidator";
 
-
-    export default function RegisterScreen({navigation}: any) {
-
-        //definición de una variabe de estadoen ReacN
-      const [firstName, setFirstName] = useState("");
-      const [lastName, setLastName] = useState("");
-      const [email, setEmail] = useState("");
-      const [password, setPassword] = useState("");
-      
-
-        const handleRegister = async () => {
-            try {
-                const { data, error } = await Supabase.auth.signUp({
-                    email,
-                    password,
-                });
-
-                if (error) {
-                    Alert.alert("Error", error.message);
-                    return;
-                }
-                const userId = data.user?.id;
-                if (userId) {
-                    const { error: profileError } = await Supabase
-                        .from("users")
-                        .insert([
-                            {
-                              user_id: userId, // 👈 obligatorio (relación con auth)
-                              
-                              first_name: firstName,
-                              last_name: lastName,
-                              email:email,
-                              status: "active",
-                            },
-                        ]);
-
-
-                    if (profileError) {
-                        Alert.alert("Error perfil", profileError.message);
-                        return;
-                    }
-                }
-                navigation.navigate("EditProfile");
-                Alert.alert("Éxito", "Usuario registrado correctamente");
-
-
-            } catch (err) {
-                console.log(err);
-            }
-        };
-        return (
-
-            <LoginAndRegisterCard>
-
-                <Text style={{fontSize: 18, fontWeight: "600", marginBottom: 10}}>
-                    Primera App Móvil de Misap
-                </Text>
-                <CustomInput
-                    type={'text'}
-                    placeholder={'Ingresa tu nombre'}
-                    value={firstName}
-                    onChange={setFirstName}
-                />
-              <CustomInput
-                type="text"
-                placeholder="Ingresa tu apellido"
-                value={lastName}
-                onChange={setLastName}
-              />
-
-                <CustomInput
-                    type={'email'}
-                    placeholder={'micorreo@@gmail.com'}
-                    value={email}
-                    onChange={setEmail}
-                />
-
-                <CustomInput
-                    type={'password'}
-                    placeholder={'Ingresa tu contraseña crack'}
-                    value={password}
-                    onChange={setPassword}
-                />
-
-                <View style={{marginTop: 10, width: '100%', alignItems: 'center'}}>
-                    <CustomButton
-                        title={"Registrarse"}
-                        onPress={handleRegister}
-                    />
-                </View>
-
-            </LoginAndRegisterCard>
-        );
+export default function RegisterScreen({ navigation }: any) {
+  
+  const { updateProfile } = useCaremapHealth();
+  
+  const [firstName, setFirstName] = useState("");
+  const [lastName, setLastName] = useState("");
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
+  
+  const [errors, setErrors] = useState({
+    firstName: "",
+    lastName: "",
+    email: "",
+    password: "",
+  });
+  
+  const handleFirstName = (value: string) => {
+    setFirstName(value);
+    
+    setErrors((prev) => ({
+      ...prev,
+      firstName: validateText(value, "Nombre") || "",
+    }));
+  };
+  
+  const handleLastName = (value: string) => {
+    setLastName(value);
+    
+    setErrors((prev) => ({
+      ...prev,
+      lastName: validateText(value, "Apellido") || "",
+    }));
+  };
+  
+  const handleEmail = (value: string) => {
+    setEmail(value);
+    
+    setErrors((prev) => ({
+      ...prev,
+      email: validateEmail(value) || "",
+    }));
+  };
+  
+  const handlePassword = (value: string) => {
+    setPassword(value);
+    
+    setErrors((prev) => ({
+      ...prev,
+      password: validatePassword(value) || "",
+    }));
+  };
+  
+  const handleRegister = async () => {
+    
+    const validations = {
+      firstName: validateText(firstName, "Nombre"),
+      lastName: validateText(lastName, "Apellido"),
+      email: validateEmail(email),
+      password: validatePassword(password),
+    };
+    
+    setErrors({
+      firstName: validations.firstName || "",
+      lastName: validations.lastName || "",
+      email: validations.email || "",
+      password: validations.password || "",
+    });
+    
+    const hasErrors = Object.values(validations).some(Boolean);
+    
+    if (hasErrors) {
+      return Alert.alert(
+        "Error",
+        "Corrige los campos marcados"
+      );
     }
+    
+    try {
+      
+      const { data, error } =
+        await Supabase.auth.signUp({
+          email,
+          password,
+        });
+      
+      if (error) {
+        Alert.alert("Error", error.message);
+        return;
+      }
+      
+      const userId = data.user?.id;
+      
+      if (userId) {
+        
+        const { error: profileError } =
+          await Supabase
+            .from("users")
+            .insert([
+              {
+                user_id: userId,
+                first_name: firstName,
+                last_name: lastName,
+                email: email,
+                status: "active",
+              },
+            ]);
+        
+        if (profileError) {
+          Alert.alert(
+            "Error perfil",
+            profileError.message
+          );
+          return;
+        }
+        
+        updateProfile({
+          user_id: userId,
+          first_Name: firstName,
+          last_Name: lastName,
+          email,
+          status: "active",
+          profileCompleted: false,
+        });
+      }
+      
+      Alert.alert(
+        "Éxito",
+        "Usuario registrado correctamente"
+      );
+      
+      navigation.navigate("EditProfile");
+      
+    } catch (err) {
+      console.log(err);
+      
+      Alert.alert(
+        "Error",
+        "Ocurrió un error inesperado"
+      );
+    }
+  };
+  
+  return (
+    <LoginAndRegisterCard>
+      
+      <Text style={styles.title}>
+        Primera App Móvil de Misap
+      </Text>
+      
+      <CustomInput
+        type="text"
+        placeholder="Ingresa tu nombre"
+        value={firstName}
+        onChange={handleFirstName}
+      />
+      
+      {errors.firstName ? (
+        <Text style={styles.error}>
+          {errors.firstName}
+        </Text>
+      ) : null}
+      
+      <CustomInput
+        type="text"
+        placeholder="Ingresa tu apellido"
+        value={lastName}
+        onChange={handleLastName}
+      />
+      
+      {errors.lastName ? (
+        <Text style={styles.error}>
+          {errors.lastName}
+        </Text>
+      ) : null}
+      
+      <CustomInput
+        type="email"
+        placeholder="correo@gmail.com"
+        value={email}
+        onChange={handleEmail}
+      />
+      
+      {errors.email ? (
+        <Text style={styles.error}>
+          {errors.email}
+        </Text>
+      ) : null}
+      
+      <CustomInput
+        type="password"
+        placeholder="Ingresa tu contraseña"
+        value={password}
+        onChange={handlePassword}
+      />
+      
+      {errors.password ? (
+        <Text style={styles.error}>
+          {errors.password}
+        </Text>
+      ) : null}
+      
+      <View style={styles.buttonContainer}>
+        <CustomButton
+          title="Registrarse"
+          onPress={handleRegister}
+        />
+      </View>
+    
+    </LoginAndRegisterCard>
+  );
+}
 
-
-
-
-
+const styles = StyleSheet.create({
+  title: {
+    fontSize: 18,
+    fontWeight: "600",
+    marginBottom: 10,
+  },
+  
+  error: {
+    color: "#DC2626",
+    fontSize: 12,
+    marginTop: -8,
+    marginBottom: 6,
+    marginLeft: 4,
+  },
+  
+  buttonContainer: {
+    marginTop: 12,
+    width: "100%",
+    alignItems: "center",
+  },
+});

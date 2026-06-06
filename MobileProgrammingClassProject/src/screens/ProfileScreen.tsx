@@ -1,34 +1,105 @@
-import {useState} from "react";
-import {UserProfile} from "../utils/types/Types";
-import {View, Text} from "react-native";
+import React from "react";
+import { Text, View, Image, StyleSheet } from "react-native";
+import { useCaremapHealth } from "../contexts/CaremapHealthContexts";
+import CardProfile, {sharedStyles} from "../components/CardProfile";
+import CustomButton from "../components/CustomButton";
 
-
-export default function ProfileScreen()
-{
-    const [profile, setProfile] = useState<Partial<UserProfile>>({});
-    const [editing, setEditing] = useState(false);
-    const [saved, setSaved] = useState(false);
-
-    /** Actualizar un campo del perfil */
-    const updateField = (field: keyof UserProfile, value: string) => {
-        setProfile((prev) => ({ ...prev, [field]: value }));
-        setSaved(false);
-    };
-
-    const ageError =
-        editing && (profile.age === undefined  || isNaN(Number(profile.age)))
-            ? 'La edad debe ser un número válido'
-            : '';
-    /** Guardar cambios */
-    const handleSave = () => {
-        if (ageError) return;
-        setEditing(false);
-        setSaved(true);
-    };
-
-    return (
-        <View>
-            <Text>Perfil</Text>
+export default function ProfileScreen({ navigation }: any) {
+  const { profile } = useCaremapHealth();
+  
+  return (
+    <CardProfile
+      footer={
+        <CustomButton
+          title="Editar perfil"
+          onPress={() => navigation.navigate("EditProfile")}
+        />
+      }
+    >
+      {/* HEADER */}
+      <View style={sharedStyles.header}>
+        {profile.photoUrl ? (
+          <Image source={{ uri: profile.photoUrl }} style={sharedStyles.avatar} />
+        ) : (
+          <View style={sharedStyles.avatarPlaceholder}>
+            <Text style={sharedStyles.avatarText}>Sin foto</Text>
+          </View>
+        )}
+        
+        <Text style={sharedStyles.name}>
+          {profile.first_Name} {profile.last_Name}
+        </Text>
+        
+        <Text style={sharedStyles.email}>{profile.email}</Text>
+      </View>
+      
+      {/* PERSONAL */}
+      <View style={sharedStyles.section}>
+        <Text style={sharedStyles.sectionTitle}>Información Personal</Text>
+        
+        <View style={sharedStyles.cardSection}>
+          <View style={sharedStyles.fieldCard}>
+            <Text style={sharedStyles.fieldLabel}>Nombre completo</Text>
+            <Text style={sharedStyles.fieldValue}>
+              {profile.first_Name} {profile.last_Name}
+            </Text>
+          </View>
+          
+          <View style={sharedStyles.fieldCard}>
+            <Text style={sharedStyles.fieldLabel}>Nacimiento</Text>
+            <Text style={sharedStyles.fieldValue}>
+              {profile.birthDate
+                ? new Date(profile.birthDate).toLocaleDateString()
+                : "-"}
+            </Text>
+          </View>
+          
+          
         </View>
-    );
+      </View>
+      
+      {/* CONTACTO */}
+      <View style={sharedStyles.section}>
+        
+        
+        <Text style={sharedStyles.sectionTitle}>Contacto</Text>
+        <View style={sharedStyles.cardSection}>
+          <View style={sharedStyles.fieldCard}>
+            <Text style={sharedStyles.fieldLabel}>Correo</Text>
+            <Text style={sharedStyles.fieldValue}>{profile.email ?? "-"}</Text>
+          </View>
+          
+          <View style={sharedStyles.fieldCard}>
+            <Text style={sharedStyles.fieldLabel}>Teléfono</Text>
+            <Text style={sharedStyles.fieldValue}>{profile.phone ?? "-"}</Text>
+          </View>
+          
+          
+          <View style={sharedStyles.fieldCard}>
+            <Text style={sharedStyles.fieldLabel}>Dirección</Text>
+            <Text style={sharedStyles.fieldValue}>{profile.address ??  "-"}</Text>
+          </View>
+          
+          
+          <View style={sharedStyles.fieldCard}>
+            <Text style={sharedStyles.fieldLabel}>Emergencia</Text>
+            <Text style={sharedStyles.fieldValue}>{profile.emergencyContact ?? "-"}</Text>
+          </View>
+          
+        </View>
+      </View>
+      
+      {/* MÉDICO */}
+      <View style={sharedStyles.section}>
+        <Text style={sharedStyles.sectionTitle}>Médico</Text>
+        
+        <View style={sharedStyles.cardSection}>
+          <Text style={sharedStyles.label}>Tipo de sangre</Text>
+          <Text style={sharedStyles.infoValue}>
+            {profile.bloodType ?? "-"}
+          </Text>
+        </View>
+      </View>
+    </CardProfile>
+  );
 }
