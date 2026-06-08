@@ -37,7 +37,6 @@ export default function RegisterScreen({ navigation }: any) {
   
   const handleFirstName = (value: string) => {
     setFirstName(value);
-    
     setErrors((prev) => ({
       ...prev,
       firstName: validateText(value, "Nombre") || "",
@@ -46,25 +45,23 @@ export default function RegisterScreen({ navigation }: any) {
   
   const handleLastName = (value: string) => {
     setLastName(value);
-    
     setErrors((prev) => ({
       ...prev,
       lastName: validateText(value, "Apellido") || "",
     }));
   };
   
+  // Al escribir el correo, limpiamos su error visual y no se valida
   const handleEmail = (value: string) => {
     setEmail(value);
-    
     setErrors((prev) => ({
       ...prev,
-      email: validateEmail(value) || "",
+      email: "",
     }));
   };
   
   const handlePassword = (value: string) => {
     setPassword(value);
-    
     setErrors((prev) => ({
       ...prev,
       password: validatePassword(value) || "",
@@ -73,17 +70,36 @@ export default function RegisterScreen({ navigation }: any) {
   
   const handleRegister = async () => {
     
+    // Se valida que ningun campo obligatorio se encuentre vacio
+    if (!firstName.trim() || !lastName.trim() || !email.trim() || !password.trim()) {
+      return Alert.alert(
+        "Campos Obligatorios",
+        "Por favor, llena todos los campos marcados con (*). La foto es opcional."
+      );
+    }
+
+    // Ejecutamos todas las validaciones al presionar el botón
+    const emailValidationError = validateEmail(email);
     const validations = {
       firstName: validateText(firstName, "Nombre"),
       lastName: validateText(lastName, "Apellido"),
-      email: validateEmail(email),
+      email: emailValidationError,
       password: validatePassword(password),
     };
     
+    // Si el correo está incompleto o no cumple con el formato tiramos el popup
+    if (!email.includes("@") || emailValidationError) {
+      return Alert.alert(
+        "Error de Correo",
+        "El correo electrónico no está completo o es inválido."
+      );
+    }
+    
+    // Para los demás campos, se marcan en la pantalla de forma normal
     setErrors({
       firstName: validations.firstName || "",
       lastName: validations.lastName || "",
-      email: validations.email || "",
+      email: "", // No pintamos error de texto aquí porque ya saltó el popup
       password: validations.password || "",
     });
     
@@ -97,12 +113,10 @@ export default function RegisterScreen({ navigation }: any) {
     }
     
     try {
-      
-      const { data, error } =
-        await Supabase.auth.signUp({
-          email,
-          password,
-        });
+      const { data, error } = await Supabase.auth.signUp({
+        email,
+        password,
+      });
       
       if (error) {
         Alert.alert("Error", error.message);
@@ -112,25 +126,20 @@ export default function RegisterScreen({ navigation }: any) {
       const userId = data.user?.id;
       
       if (userId) {
-        
-        const { error: profileError } =
-          await Supabase
-            .from("users")
-            .insert([
-              {
-                user_id: userId,
-                first_name: firstName,
-                last_name: lastName,
-                email: email,
-                status: "active",
-              },
-            ]);
+        const { error: profileError } = await Supabase
+          .from("users")
+          .insert([
+            {
+              user_id: userId,
+              first_name: firstName,
+              last_name: lastName,
+              email: email,
+              status: "active",
+            },
+          ]);
         
         if (profileError) {
-          Alert.alert(
-            "Error perfil",
-            profileError.message
-          );
+          Alert.alert("Error perfil", profileError.message);
           return;
         }
         
@@ -153,11 +162,7 @@ export default function RegisterScreen({ navigation }: any) {
       
     } catch (err) {
       console.log(err);
-      
-      Alert.alert(
-        "Error",
-        "Ocurrió un error inesperado"
-      );
+      Alert.alert("Error", "Ocurrió un error inesperado");
     }
   };
   
@@ -170,7 +175,7 @@ export default function RegisterScreen({ navigation }: any) {
       
       <CustomInput
         type="text"
-        placeholder="Ingresa tu nombre"
+        placeholder="Ingresa tu nombre *"
         value={firstName}
         onChange={handleFirstName}
       />
@@ -183,7 +188,7 @@ export default function RegisterScreen({ navigation }: any) {
       
       <CustomInput
         type="text"
-        placeholder="Ingresa tu apellido"
+        placeholder="Ingresa tu apellido *"
         value={lastName}
         onChange={handleLastName}
       />
@@ -196,20 +201,16 @@ export default function RegisterScreen({ navigation }: any) {
       
       <CustomInput
         type="email"
-        placeholder="correo@gmail.com"
+        placeholder="correo@gmail.com *"
         value={email}
         onChange={handleEmail}
       />
       
-      {errors.email ? (
-        <Text style={styles.error}>
-          {errors.email}
-        </Text>
-      ) : null}
+      {/* El error visual del email se quitó de aquí para que nunca ensucie el diseño abajo del input */}
       
       <CustomInput
         type="password"
-        placeholder="Ingresa tu contraseña"
+        placeholder="Ingresa tu contraseña *"
         value={password}
         onChange={handlePassword}
       />
@@ -237,7 +238,6 @@ const styles = StyleSheet.create({
     fontWeight: "600",
     marginBottom: 10,
   },
-  
   error: {
     color: "#DC2626",
     fontSize: 12,
@@ -245,7 +245,6 @@ const styles = StyleSheet.create({
     marginBottom: 6,
     marginLeft: 4,
   },
-  
   buttonContainer: {
     marginTop: 12,
     width: "100%",
