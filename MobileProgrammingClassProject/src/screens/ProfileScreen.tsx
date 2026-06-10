@@ -1,7 +1,7 @@
 import React from "react";
 import { Text, View, Image, StyleSheet } from "react-native";
 import { useCaremapHealth } from "../contexts/CaremapHealthContexts";
-import CardProfile, {sharedStyles} from "../components/CardProfile";
+import CardProfile, { sharedStyles } from "../components/CardProfile";
 import CustomButton from "../components/CustomButton";
 
 export default function ProfileScreen({ navigation }: any) {
@@ -10,10 +10,22 @@ export default function ProfileScreen({ navigation }: any) {
   return (
     <CardProfile
       footer={
-        <CustomButton
-          title="Editar perfil"
-          onPress={() => navigation.navigate("EditProfile")}
-        />
+        <View style={{ width: "100%", gap: 10 }}>
+          <CustomButton
+            title="Editar perfil"
+            onPress={() => navigation.navigate("EditProfile")}
+          />
+          <CustomButton
+            title="Cerrar sesión"
+            onPress={() => navigation.navigate("Login")}
+          />
+          {/* Botón de acceso rápido agregado para pruebas cómodas */}
+          <CustomButton
+            title="Ir a Inicio / Dashboard"
+            variant="secondary"
+            onPress={() => navigation.navigate("UserTabs")}
+          />
+        </View>
       }
     >
       {/* HEADER */}
@@ -53,15 +65,11 @@ export default function ProfileScreen({ navigation }: any) {
                 : "-"}
             </Text>
           </View>
-          
-          
         </View>
       </View>
       
       {/* CONTACTO */}
       <View style={sharedStyles.section}>
-        
-        
         <Text style={sharedStyles.sectionTitle}>Contacto</Text>
         <View style={sharedStyles.cardSection}>
           <View style={sharedStyles.fieldCard}>
@@ -74,18 +82,15 @@ export default function ProfileScreen({ navigation }: any) {
             <Text style={sharedStyles.fieldValue}>{profile.phone ?? "-"}</Text>
           </View>
           
-          
           <View style={sharedStyles.fieldCard}>
             <Text style={sharedStyles.fieldLabel}>Dirección</Text>
-            <Text style={sharedStyles.fieldValue}>{profile.address ??  "-"}</Text>
+            <Text style={sharedStyles.fieldValue}>{profile.address ?? "-"}</Text>
           </View>
-          
           
           <View style={sharedStyles.fieldCard}>
             <Text style={sharedStyles.fieldLabel}>Emergencia</Text>
             <Text style={sharedStyles.fieldValue}>{profile.emergencyContact ?? "-"}</Text>
           </View>
-          
         </View>
       </View>
       
@@ -94,10 +99,12 @@ export default function ProfileScreen({ navigation }: any) {
         <Text style={sharedStyles.sectionTitle}>Médico</Text>
         
         <View style={sharedStyles.cardSection}>
-          <Text style={sharedStyles.label}>Tipo de sangre</Text>
-          <Text style={sharedStyles.infoValue}>
-            {profile.bloodType ?? "-"}
-          </Text>
+          <View style={sharedStyles.fieldCard}>
+            <Text style={sharedStyles.fieldLabel}>Tipo de sangre</Text>
+            <Text style={sharedStyles.fieldValue}>
+              {profile.bloodType ?? "-"}
+            </Text>
+          </View>
         </View>
       </View>
     </CardProfile>

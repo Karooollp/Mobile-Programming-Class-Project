@@ -210,17 +210,17 @@ export default function EditProfileScreen({navigation}:any) {
           
           <CustomInput value={first_Name} onChange={setFirst_Name} placeholder="Nombre" />
           <CustomInput value={last_Name} onChange={setLast_Name} placeholder="Apellido" />
-          <CustomInput value={email} onChange={setEmail} placeholder="Correo" />
+          <CustomInput type="email" value={email} onChange={setEmail} placeholder="Correo" />
         </View>
         
         {/* ===== SECCIÓN 2 ===== */}
         <View style={sharedStyles.cardSection}>
           <Text style={sharedStyles.sectionTitle}>Datos Generales</Text>
           
-          <CustomInput placeholder="Edad" value={age} onChange={handleAge} />
+          <CustomInput type="number" placeholder="Edad" value={age} onChange={handleAge} />
           {!!errors.age && <Text style={sharedStyles.error}>{errors.age}</Text>}
           
-          <CustomInput placeholder="Teléfono" value={phone} onChange={handlePhone} />
+          <CustomInput type="number" placeholder="Teléfono" value={phone} onChange={handlePhone} />
           {!!errors.phone && <Text style={sharedStyles.error}>{errors.phone}</Text>}
           
           <CustomInput placeholder="Dirección" value={address} onChange={handleAddress} />
@@ -322,6 +322,7 @@ export default function EditProfileScreen({navigation}:any) {
           )}
           
           <CustomInput
+            type="number"
             placeholder="Contacto de emergencia"
             value={emergency}
             onChange={handleEmergency}
