@@ -6,7 +6,7 @@ import {
   Image,
   Alert,
   StyleSheet,
-  ScrollView, ActivityIndicator,
+  ScrollView, ActivityIndicator, Linking,
 } from "react-native";
 
 import * as ImagePicker from "expo-image-picker";
@@ -36,6 +36,9 @@ import {
 } from "../services/storageService";
 
 import * as DocumentPicker from "expo-document-picker";
+import CustomButton from "../components/CustomButton";
+import ProfilePhotoPicker from "../components/PhotoPicker";
+import PhotoPicker from "../components/PhotoPicker";
 export default function EditProfileScreen({navigation}:any) {
   
   const dispatch = useAppDispatch();
@@ -66,6 +69,9 @@ export default function EditProfileScreen({navigation}:any) {
   const [bloodType, setBloodType] = useState(profile.bloodType ?? "");
   const [emergency, setEmergency] = useState(profile.emergencyContact ?? "");
   const [photo, setPhoto] = useState(profile.photoUrl ?? null);
+  
+  const [tempPhoto, setTempPhoto] = useState<string | null>(null);
+  const [showPhotoPreview, setShowPhotoPreview] = useState(false);
   const [birthDate, setBirthDate] = useState<Date | null>(
     profile.birthDate ? new Date(profile.birthDate) : null
   );
@@ -146,16 +152,7 @@ export default function EditProfileScreen({navigation}:any) {
     setErrors((p) => ({ ...p, bloodType: validateBloodType(value) || "" }));
   };
   
-  const pickImage = async () => {
-    const result = await ImagePicker.launchImageLibraryAsync({
-      mediaTypes: ImagePicker.MediaTypeOptions.Images,
-      quality: 0.7,
-    });
-    
-    if (!result.canceled) {
-      setPhoto(result.assets[0].uri);
-    }
-  };
+
   
   const pickDocument = async () => {
     const result =
@@ -282,23 +279,17 @@ export default function EditProfileScreen({navigation}:any) {
   };
   
   return (
-    <CardProfile>
+   
+      <CardProfile>
       <ScrollView showsVerticalScrollIndicator={false}>
         
         {/* FOTO */}
         <View style={sharedStyles.cardSection}>
-          <TouchableOpacity
-            style={sharedStyles.photoContainer}
-            onPress={pickImage}
-          >
-            {photo ? (
-              <Image source={{ uri: photo }} style={sharedStyles.photo} />
-            ) : (
-              <View style={sharedStyles.emptyPhoto}>
-                <Text style={sharedStyles.photoText}>Agregar foto</Text>
-              </View>
-            )}
-          </TouchableOpacity>
+          <PhotoPicker
+            value={photo}
+            onChange={setPhoto}
+            variant="profile"
+          />
         </View>
         
         {/* ===== SECCIÓN 1 ===== */}
@@ -417,21 +408,8 @@ export default function EditProfileScreen({navigation}:any) {
               ))}
             </View>
           )}
-          <TouchableOpacity
-            onPress={pickDocument}
-          >
-            <Text>
-              Seleccionar Certificado
-            </Text>
-          </TouchableOpacity>
           
-          {
-            document && (
-              <Text>
-                {document.name}
-              </Text>
-            )
-          }
+          <Text style={sharedStyles.label}>Contacto de Emergencia</Text>
           <CustomInput
             type="number"
             placeholder="Contacto de emergencia"
@@ -442,6 +420,49 @@ export default function EditProfileScreen({navigation}:any) {
           {!!errors.emergency && (
             <Text style={sharedStyles.error}>{errors.emergency}</Text>
           )}
+          
+          
+          
+          <Text style={sharedStyles.label}>
+            Certificado médico
+          </Text>
+          
+          <TouchableOpacity
+            style={sharedStyles.dropdownButton}
+            onPress={pickDocument}
+          >
+            <Text style={sharedStyles.dropdownText}>
+              {document?.name || profile.birthCertificateUrl
+                ? "Documento seleccionado / existente"
+                : "Seleccionar Certificado"}
+            </Text>
+          </TouchableOpacity>
+          
+          {/* archivo nuevo seleccionado */}
+          {document && (
+            <Text style={{ marginTop: 5 }}>
+              📄 Nuevo: {document.name}
+            </Text>
+          )}
+          
+          {/* archivo ya guardado en Supabase */}
+          {!document && profile.birthCertificateUrl && (
+            <TouchableOpacity
+              onPress={() => {
+                if (profile?.birthCertificateUrl) {
+                  Linking.openURL(profile.birthCertificateUrl);
+                } else {
+                  Alert.alert("No hay documento");
+                }
+              }}
+            >
+              <Text style={{ color: "blue", marginTop: 5 }}>
+                📎 Ver documento actual
+              </Text>
+            </TouchableOpacity>
+          )}
+          
+          
         </View>
         
         {/* BOTÓN */}
@@ -464,6 +485,8 @@ export default function EditProfileScreen({navigation}:any) {
       
       </ScrollView>
     </CardProfile>
- 
+
   );
 }
+
+

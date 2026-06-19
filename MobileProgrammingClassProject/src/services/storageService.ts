@@ -32,20 +32,20 @@ export const uploadDocument = async (
   userId: string,
   file: DocumentPicker.DocumentPickerAsset
 ) => {
-  const response = await fetch(file.uri);
-  const blob = await response.blob();
+  const fileName = `${userId}-${Date.now()}.${file.name.split(".").pop() || "pdf"}`;
   
-  const extension =
-    file.name.split(".").pop() || "pdf";
+  const formData = new FormData();
   
-  const fileName =
-    `${userId}-${Date.now()}.${extension}`;
+  formData.append("file", {
+    uri: file.uri,
+    name: file.name,
+    type: file.mimeType || "application/pdf",
+  } as any);
   
   const { error } = await Supabase.storage
     .from("medical-files")
-    .upload(fileName, blob, {
-      contentType:
-        file.mimeType || "application/pdf",
+    .upload(fileName, formData, {
+      contentType: file.mimeType || "application/pdf",
       upsert: true,
     });
   
