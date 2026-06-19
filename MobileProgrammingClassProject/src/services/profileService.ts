@@ -20,6 +20,7 @@ export async function fetchUserProfile(userId: string) {
     gender: data.gender,
     birthDate: data.birth_date,
     photoUrl: data.photo_url,
+    birthCertificateUrl: data.birth_certificate_url,
     phone: data.phone,
     address: data.address,
     bloodType: data.blood_type,

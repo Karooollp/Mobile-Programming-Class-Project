@@ -12,6 +12,7 @@ export type UserProfile = {
   gender?: string | null;
   birthDate?: string | null;
   photoUrl?: string | null;
+  birthCertificateUrl?: string | null;
   phone?: string | null;
   address?: string | null;
   bloodType?: string | null;

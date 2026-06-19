@@ -6,7 +6,7 @@ import {
   Image,
   Alert,
   StyleSheet,
-  ScrollView,
+  ScrollView, ActivityIndicator,
 } from "react-native";
 
 import * as ImagePicker from "expo-image-picker";
@@ -30,14 +30,17 @@ import CardProfile, { sharedStyles } from "../components/CardProfile";
 import { updateProfile } from "../store/slices/userProfileSlice";
 import { useAppDispatch, useAppSelector } from "../store/hooks";
 
+import {
+  uploadImage,
+  uploadDocument,
+} from "../services/storageService";
 
-
-
+import * as DocumentPicker from "expo-document-picker";
 export default function EditProfileScreen({navigation}:any) {
   
   const dispatch = useAppDispatch();
   
-  // 🔥 Redux source of truth
+  // Redux source of truth
   const profile = useAppSelector((state) => state.userProfile.data);
 
   
@@ -66,6 +69,12 @@ export default function EditProfileScreen({navigation}:any) {
   const [birthDate, setBirthDate] = useState<Date | null>(
     profile.birthDate ? new Date(profile.birthDate) : null
   );
+  const [document, setDocument] =
+    useState<DocumentPicker.DocumentPickerAsset | null>(null);
+  const [loading, setLoading] =
+    useState(false);
+  
+  
   
   useEffect(() => {
     if (!profile) return;
@@ -148,6 +157,18 @@ export default function EditProfileScreen({navigation}:any) {
     }
   };
   
+  const pickDocument = async () => {
+    const result =
+      await DocumentPicker.getDocumentAsync({
+        copyToCacheDirectory: true,
+        multiple: false,
+      });
+    
+    if (!result.canceled) {
+      setDocument(result.assets[0]);
+    }
+  };
+  
   const handleSave = async () => {
     const validations = {
       age: validateAge(age),
@@ -174,12 +195,33 @@ export default function EditProfileScreen({navigation}:any) {
     }
     
     try {
+      setLoading(true);
+      
       const {
         data: { user },
       } = await Supabase.auth.getUser();
       
+      
       if (!user) {
         return Alert.alert("Error", "Usuario no autenticado");
+      }
+      
+      
+      let imageUrl = profile.photoUrl;
+      let documentUrl = profile.birthCertificateUrl;
+      
+      if (photo?.startsWith("file")) {
+        imageUrl = await uploadImage(
+          user.id,
+          photo
+        );
+      }
+      
+      if (document) {
+        documentUrl = await uploadDocument(
+          user.id,
+          document
+        );
       }
       
       const updatedProfile = {
@@ -194,8 +236,13 @@ export default function EditProfileScreen({navigation}:any) {
         gender,
         bloodType,
         emergencyContact: emergency,
-        photoUrl: photo,
-        birthDate: birthDate ? birthDate.toISOString() : null,
+        
+        photoUrl: imageUrl,
+        birthCertificateUrl: documentUrl,
+        
+        birthDate: birthDate
+          ? birthDate.toISOString()
+          : null,
         
         profileCompleted: true,
       };
@@ -211,7 +258,8 @@ export default function EditProfileScreen({navigation}:any) {
           gender,
           blood_type: bloodType,
           emergency_contact: emergency,
-          photo_url: photo,
+          photo_url: imageUrl,
+          birth_certificate_url: documentUrl,
           birth_date: birthDate?.toISOString(),
         })
         .eq("user_id", user.id);
@@ -224,7 +272,12 @@ export default function EditProfileScreen({navigation}:any) {
       navigation.navigate("Profile");
     } catch (error) {
       console.log(error);
-      Alert.alert("Error", "Ocurrió un error inesperado");
+      Alert.alert(
+        "Error",
+        "Ocurrió un error inesperado"
+      );
+    } finally {
+      setLoading(false);
     }
   };
   
@@ -364,7 +417,21 @@ export default function EditProfileScreen({navigation}:any) {
               ))}
             </View>
           )}
+          <TouchableOpacity
+            onPress={pickDocument}
+          >
+            <Text>
+              Seleccionar Certificado
+            </Text>
+          </TouchableOpacity>
           
+          {
+            document && (
+              <Text>
+                {document.name}
+              </Text>
+            )
+          }
           <CustomInput
             type="number"
             placeholder="Contacto de emergencia"
@@ -378,12 +445,22 @@ export default function EditProfileScreen({navigation}:any) {
         </View>
         
         {/* BOTÓN */}
-        <TouchableOpacity
-          style={sharedStyles.button}
-          onPress={handleSave}
-        >
-          <Text style={sharedStyles.buttonText}>Guardar Perfil</Text>
-        </TouchableOpacity>
+        {
+          loading ? (
+            <ActivityIndicator
+              size="large"
+            />
+          ) : (
+            <TouchableOpacity
+              style={sharedStyles.button}
+              onPress={handleSave}
+            >
+              <Text style={sharedStyles.buttonText}>
+                Guardar Perfil
+              </Text>
+            </TouchableOpacity>
+          )
+        }
       
       </ScrollView>
     </CardProfile>
