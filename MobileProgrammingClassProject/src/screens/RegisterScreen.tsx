@@ -11,17 +11,20 @@ import CustomInput from "../components/CustomInput";
 import LoginAndRegisterCard from "../components/LoginAndRegisterCard";
 
 import { Supabase } from "../lib/Supabase";
-import { useCaremapHealth } from "../contexts/CaremapHealthContexts";
 
 import {
   validateText,
   validateEmail,
   validatePassword,
 } from "../utils/validators/profileValidator";
+import {useAppDispatch} from "../store/hooks";
+import { setProfile } from "../store/slices/userProfileSlice";
+
+
 
 export default function RegisterScreen({ navigation }: any) {
-  
-  const { updateProfile } = useCaremapHealth();
+  const dispatch = useAppDispatch();
+
   
   const [firstName, setFirstName] = useState("");
   const [lastName, setLastName] = useState("");
@@ -143,14 +146,17 @@ export default function RegisterScreen({ navigation }: any) {
           return;
         }
         
-        updateProfile({
-          user_id: userId,
-          first_Name: firstName,
-          last_Name: lastName,
-          email,
-          status: "active",
-          profileCompleted: false,
-        });
+        // 🔥 AQUÍ VA REDUX (REEMPLAZA EL CONTEXT)
+        dispatch(
+          setProfile({
+            user_id: userId,
+            first_Name: firstName,
+            last_Name: lastName,
+            email,
+            status: "active",
+            profileCompleted: false,
+          })
+        );
       }
       
       Alert.alert(

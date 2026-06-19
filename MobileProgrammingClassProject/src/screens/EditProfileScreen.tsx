@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, {useEffect, useState} from "react";
 import {
   View,
   Text,
@@ -14,7 +14,6 @@ import DateTimePicker from "@react-native-community/datetimepicker";
 
 import CustomInput from "../components/CustomInput";
 import { Supabase } from "../lib/Supabase";
-import { useCaremapHealth } from "../contexts/CaremapHealthContexts";
 
 import {
   validateAge,
@@ -28,14 +27,33 @@ import {
 
 import CardProfile, { sharedStyles } from "../components/CardProfile";
 
+import { updateProfile } from "../store/slices/userProfileSlice";
+import { useAppDispatch, useAppSelector } from "../store/hooks";
+
+
+
+
 export default function EditProfileScreen({navigation}:any) {
+  
+  const dispatch = useAppDispatch();
+  
+  // 🔥 Redux source of truth
+  const profile = useAppSelector((state) => state.userProfile.data);
+
+  
   const [showBloodTypes, setShowBloodTypes] = useState(false);
   const [showDatePicker, setShowDatePicker] = useState(false);
   
-  const { profile, updateProfile } = useCaremapHealth();
+  if (!profile) {
+    return (
+      <View style={{ flex: 1, justifyContent: "center", alignItems: "center" }}>
+        <Text>Cargando perfil...</Text>
+      </View>
+    );
+  }
   
-  const [first_Name, setFirst_Name] = useState(profile.first_Name ?? "");
-  const [last_Name, setLast_Name] = useState(profile.last_Name ?? "");
+  const [firstName, setFirstName] = useState(profile.first_Name ?? "");
+  const [lastName, setLastName] = useState(profile.last_Name ?? "");
   const [email, setEmail] = useState(profile.email ?? "");
   
   const [age, setAge] = useState(profile.age?.toString() ?? "");
@@ -45,10 +63,32 @@ export default function EditProfileScreen({navigation}:any) {
   const [bloodType, setBloodType] = useState(profile.bloodType ?? "");
   const [emergency, setEmergency] = useState(profile.emergencyContact ?? "");
   const [photo, setPhoto] = useState(profile.photoUrl ?? null);
-  
   const [birthDate, setBirthDate] = useState<Date | null>(
     profile.birthDate ? new Date(profile.birthDate) : null
   );
+  
+  useEffect(() => {
+    if (!profile) return;
+    
+    setFirstName(profile.first_Name ?? "");
+    setLastName(profile.last_Name ?? "");
+    setEmail(profile.email ?? "");
+    
+    setAge(profile.age?.toString() ?? "");
+    setPhone(profile.phone ?? "");
+    setAddress(profile.address ?? "");
+    setGender(profile.gender ?? "");
+    setBloodType(profile.bloodType ?? "");
+    setEmergency(profile.emergencyContact ?? "");
+    setPhoto(profile.photoUrl ?? null);
+    
+    setBirthDate(
+      profile.birthDate ? new Date(profile.birthDate) : null
+    );
+  }, [profile]);
+  
+  
+  
   
   const [errors, setErrors] = useState({
     age: "",
@@ -144,6 +184,10 @@ export default function EditProfileScreen({navigation}:any) {
       
       const updatedProfile = {
         ...profile,
+        first_Name: firstName,
+        last_Name: lastName,
+        email,
+        
         age: Number(age),
         phone,
         address,
@@ -151,12 +195,12 @@ export default function EditProfileScreen({navigation}:any) {
         bloodType,
         emergencyContact: emergency,
         photoUrl: photo,
-        birthDate: birthDate ? birthDate.toISOString() : null, // 👈 AQUÍ
-        profileCompleted: true,
+        birthDate: birthDate ? birthDate.toISOString() : null,
         
+        profileCompleted: true,
       };
       
-      updateProfile(updatedProfile);
+      dispatch(updateProfile(updatedProfile));
       
       const { error } = await Supabase
         .from("users")
@@ -208,8 +252,8 @@ export default function EditProfileScreen({navigation}:any) {
         <View style={sharedStyles.cardSection}>
           <Text style={sharedStyles.sectionTitle}>Información Personal</Text>
           
-          <CustomInput value={first_Name} onChange={setFirst_Name} placeholder="Nombre" />
-          <CustomInput value={last_Name} onChange={setLast_Name} placeholder="Apellido" />
+          <CustomInput value={firstName} onChange={setFirstName} placeholder="Nombre" />
+          <CustomInput value={lastName} onChange={setLastName} placeholder="Apellido" />
           <CustomInput type="email" value={email} onChange={setEmail} placeholder="Correo" />
         </View>
         
