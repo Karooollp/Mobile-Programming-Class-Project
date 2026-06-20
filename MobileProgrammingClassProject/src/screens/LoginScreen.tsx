@@ -5,33 +5,46 @@ import { useState } from "react";
 import { Supabase } from "../lib/Supabase";
 import { Alert } from "react-native";
 import LoginAndRegisterCard from "../components/LoginAndRegisterCard";
+import {useAppDispatch} from "../store/hooks";
+import {setUser} from "../store/slices/AuthSlices";
+import { setProfile } from "../store/slices/userProfileSlice";
+import { fetchUserProfile } from "../services/profileService";
 
 export function LoginScreen({navigation}: any) {
+  
+  const dispatch = useAppDispatch();
+   
     const [email, setEmail] = useState('');
     const [password, setPasword] = useState('');
     //Se llamo una variable loca proveniente de AuthContextType el cual esta tipado en Auth
-
-    const handleLogin = async () => {
-        try {
-            const { data, error } = await Supabase.auth.signInWithPassword({
-                email: email,
-                password: password,
-            });
-
-            if (error) {
-                Alert.alert("Error", error.message);
-                return;
-            }
-
-            console.log("Usuario logueado:", data.user);
-
-            // ✨ Cambiado de "Profile" a "UserTabs" para ir directo al texto de prueba uwu
-            navigation.navigate("UserTabs");
-
-        } catch (error) {
-            console.log(error);
-        }
-    };
+  
+  const handleLogin = async () => {
+    const { data, error } = await Supabase.auth.signInWithPassword({
+      email,
+      password,
+    });
+    
+    if (error) {
+      Alert.alert("Error", error.message);
+      return;
+    }
+    
+    const user = data.user;
+    
+    dispatch(setUser(user));
+    
+    // 🔥 SIEMPRE RECARGAR PERFIL COMPLETO
+    const profile = await fetchUserProfile(user.id);
+    
+    if (!profile) {
+      Alert.alert("Error", "No se pudo cargar el perfil");
+      return;
+    }
+    
+    dispatch(setProfile(profile));
+    
+    navigation.replace("UserTabs");
+  };
 
     return (
         <LoginAndRegisterCard>

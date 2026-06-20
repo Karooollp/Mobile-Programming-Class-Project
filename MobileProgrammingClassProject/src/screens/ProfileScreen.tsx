@@ -1,11 +1,20 @@
 import React from "react";
-import { Text, View, Image, StyleSheet } from "react-native";
-import { useCaremapHealth } from "../contexts/CaremapHealthContexts";
+import {Text, View, Image, TouchableOpacity, Linking} from "react-native";
+import { useAppSelector } from "../store/hooks";
+
 import CardProfile, { sharedStyles } from "../components/CardProfile";
 import CustomButton from "../components/CustomButton";
 
 export default function ProfileScreen({ navigation }: any) {
-  const { profile } = useCaremapHealth();
+  const profile = useAppSelector(state => state.userProfile.data);
+  
+  if (!profile) {
+    return (
+      <View style={{ flex: 1, justifyContent: "center", alignItems: "center" }}>
+        <Text>Cargando perfil...</Text>
+      </View>
+    );
+  }
   
   return (
     <CardProfile
@@ -104,6 +113,33 @@ export default function ProfileScreen({ navigation }: any) {
             <Text style={sharedStyles.fieldValue}>
               {profile.bloodType ?? "-"}
             </Text>
+          </View>
+          
+          <View style={sharedStyles.fieldCard}>
+            <Text style={sharedStyles.fieldLabel}>
+              Acta Medica
+            </Text>
+            
+            {profile.birthCertificateUrl ? (
+              <TouchableOpacity
+                onPress={() =>
+                  Linking.openURL(profile.birthCertificateUrl!)
+                }
+              >
+                <Text
+                  style={[
+                    sharedStyles.fieldValue,
+                    { color: "blue" },
+                  ]}
+                >
+                  Ver documento
+                </Text>
+              </TouchableOpacity>
+            ) : (
+              <Text style={sharedStyles.fieldValue}>
+                No hay documento
+              </Text>
+            )}
           </View>
         </View>
       </View>

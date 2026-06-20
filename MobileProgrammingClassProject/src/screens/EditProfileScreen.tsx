@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, {useEffect, useState} from "react";
 import {
   View,
   Text,
@@ -6,7 +6,7 @@ import {
   Image,
   Alert,
   StyleSheet,
-  ScrollView,
+  ScrollView, ActivityIndicator, Linking,
 } from "react-native";
 
 import * as ImagePicker from "expo-image-picker";
@@ -14,7 +14,6 @@ import DateTimePicker from "@react-native-community/datetimepicker";
 
 import CustomInput from "../components/CustomInput";
 import { Supabase } from "../lib/Supabase";
-import { useCaremapHealth } from "../contexts/CaremapHealthContexts";
 
 import {
   validateAge,
@@ -28,14 +27,39 @@ import {
 
 import CardProfile, { sharedStyles } from "../components/CardProfile";
 
+import { updateProfile } from "../store/slices/userProfileSlice";
+import { useAppDispatch, useAppSelector } from "../store/hooks";
+
+import {
+  uploadImage,
+  uploadDocument,
+} from "../services/storageService";
+
+import * as DocumentPicker from "expo-document-picker";
+import CustomButton from "../components/CustomButton";
+import ProfilePhotoPicker from "../components/PhotoPicker";
+import PhotoPicker from "../components/PhotoPicker";
 export default function EditProfileScreen({navigation}:any) {
+  
+  const dispatch = useAppDispatch();
+  
+  // Redux source of truth
+  const profile = useAppSelector((state) => state.userProfile.data);
+
+  
   const [showBloodTypes, setShowBloodTypes] = useState(false);
   const [showDatePicker, setShowDatePicker] = useState(false);
   
-  const { profile, updateProfile } = useCaremapHealth();
+  if (!profile) {
+    return (
+      <View style={{ flex: 1, justifyContent: "center", alignItems: "center" }}>
+        <Text>Cargando perfil...</Text>
+      </View>
+    );
+  }
   
-  const [first_Name, setFirst_Name] = useState(profile.first_Name ?? "");
-  const [last_Name, setLast_Name] = useState(profile.last_Name ?? "");
+  const [firstName, setFirstName] = useState(profile.first_Name ?? "");
+  const [lastName, setLastName] = useState(profile.last_Name ?? "");
   const [email, setEmail] = useState(profile.email ?? "");
   
   const [age, setAge] = useState(profile.age?.toString() ?? "");
@@ -46,9 +70,35 @@ export default function EditProfileScreen({navigation}:any) {
   const [emergency, setEmergency] = useState(profile.emergencyContact ?? "");
   const [photo, setPhoto] = useState(profile.photoUrl ?? null);
   
+  const [tempPhoto, setTempPhoto] = useState<string | null>(null);
+  const [showPhotoPreview, setShowPhotoPreview] = useState(false);
   const [birthDate, setBirthDate] = useState<Date | null>(
     profile.birthDate ? new Date(profile.birthDate) : null
   );
+  const [document, setDocument] =
+    useState<DocumentPicker.DocumentPickerAsset | null>(null);
+  const [loading, setLoading] =
+    useState(false);
+  
+  useEffect(() => {
+    if (!profile) return;
+    
+    setFirstName(profile.first_Name ?? "");
+    setLastName(profile.last_Name ?? "");
+    setEmail(profile.email ?? "");
+    
+    setAge(profile.age?.toString() ?? "");
+    setPhone(profile.phone ?? "");
+    setAddress(profile.address ?? "");
+    setGender(profile.gender ?? "");
+    setBloodType(profile.bloodType ?? "");
+    setEmergency(profile.emergencyContact ?? "");
+    setPhoto(profile.photoUrl ?? null);
+    
+    setBirthDate(
+      profile.birthDate ? new Date(profile.birthDate) : null
+    );
+  }, [profile]);
   
   const [errors, setErrors] = useState({
     age: "",
@@ -97,14 +147,15 @@ export default function EditProfileScreen({navigation}:any) {
     setErrors((p) => ({ ...p, bloodType: validateBloodType(value) || "" }));
   };
   
-  const pickImage = async () => {
-    const result = await ImagePicker.launchImageLibraryAsync({
-      mediaTypes: ImagePicker.MediaTypeOptions.Images,
-      quality: 0.7,
-    });
+  const pickDocument = async () => {
+    const result =
+      await DocumentPicker.getDocumentAsync({
+        copyToCacheDirectory: true,
+        multiple: false,
+      });
     
     if (!result.canceled) {
-      setPhoto(result.assets[0].uri);
+      setDocument(result.assets[0]);
     }
   };
   
@@ -134,29 +185,59 @@ export default function EditProfileScreen({navigation}:any) {
     }
     
     try {
+      setLoading(true);
+      
       const {
         data: { user },
       } = await Supabase.auth.getUser();
+      
       
       if (!user) {
         return Alert.alert("Error", "Usuario no autenticado");
       }
       
+      
+      let imageUrl = profile.photoUrl;
+      let documentUrl = profile.birthCertificateUrl;
+      
+      if (photo?.startsWith("file")) {
+        imageUrl = await uploadImage(
+          user.id,
+          photo
+        );
+      }
+      
+      if (document) {
+        documentUrl = await uploadDocument(
+          user.id,
+          document
+        );
+      }
+      
       const updatedProfile = {
         ...profile,
+        first_Name: firstName,
+        last_Name: lastName,
+        email,
+        
         age: Number(age),
         phone,
         address,
         gender,
         bloodType,
         emergencyContact: emergency,
-        photoUrl: photo,
-        birthDate: birthDate ? birthDate.toISOString() : null, // 👈 AQUÍ
-        profileCompleted: true,
         
+        photoUrl: imageUrl,
+        birthCertificateUrl: documentUrl,
+        
+        birthDate: birthDate
+          ? birthDate.toISOString()
+          : null,
+        
+        profileCompleted: true,
       };
       
-      updateProfile(updatedProfile);
+      dispatch(updateProfile(updatedProfile));
       
       const { error } = await Supabase
         .from("users")
@@ -167,7 +248,8 @@ export default function EditProfileScreen({navigation}:any) {
           gender,
           blood_type: bloodType,
           emergency_contact: emergency,
-          photo_url: photo,
+          photo_url: imageUrl,
+          birth_certificate_url: documentUrl,
           birth_date: birthDate?.toISOString(),
         })
         .eq("user_id", user.id);
@@ -180,36 +262,35 @@ export default function EditProfileScreen({navigation}:any) {
       navigation.navigate("Profile");
     } catch (error) {
       console.log(error);
-      Alert.alert("Error", "Ocurrió un error inesperado");
+      Alert.alert(
+        "Error",
+        "Ocurrió un error inesperado"
+      );
+    } finally {
+      setLoading(false);
     }
   };
   
   return (
-    <CardProfile>
+   
+      <CardProfile>
       <ScrollView showsVerticalScrollIndicator={false}>
         
         {/* FOTO */}
         <View style={sharedStyles.cardSection}>
-          <TouchableOpacity
-            style={sharedStyles.photoContainer}
-            onPress={pickImage}
-          >
-            {photo ? (
-              <Image source={{ uri: photo }} style={sharedStyles.photo} />
-            ) : (
-              <View style={sharedStyles.emptyPhoto}>
-                <Text style={sharedStyles.photoText}>Agregar foto</Text>
-              </View>
-            )}
-          </TouchableOpacity>
+          <PhotoPicker
+            value={photo}
+            onChange={setPhoto}
+            variant="profile"
+          />
         </View>
         
         {/* ===== SECCIÓN 1 ===== */}
         <View style={sharedStyles.cardSection}>
           <Text style={sharedStyles.sectionTitle}>Información Personal</Text>
           
-          <CustomInput value={first_Name} onChange={setFirst_Name} placeholder="Nombre" />
-          <CustomInput value={last_Name} onChange={setLast_Name} placeholder="Apellido" />
+          <CustomInput value={firstName} onChange={setFirstName} placeholder="Nombre" />
+          <CustomInput value={lastName} onChange={setLastName} placeholder="Apellido" />
           <CustomInput type="email" value={email} onChange={setEmail} placeholder="Correo" />
         </View>
         
@@ -321,6 +402,7 @@ export default function EditProfileScreen({navigation}:any) {
             </View>
           )}
           
+          <Text style={sharedStyles.label}>Contacto de Emergencia</Text>
           <CustomInput
             type="number"
             placeholder="Contacto de emergencia"
@@ -331,18 +413,73 @@ export default function EditProfileScreen({navigation}:any) {
           {!!errors.emergency && (
             <Text style={sharedStyles.error}>{errors.emergency}</Text>
           )}
+          
+          
+          
+          <Text style={sharedStyles.label}>
+            Certificado médico
+          </Text>
+          
+          <TouchableOpacity
+            style={sharedStyles.dropdownButton}
+            onPress={pickDocument}
+          >
+            <Text style={sharedStyles.dropdownText}>
+              {document?.name || profile.birthCertificateUrl
+                ? "Documento seleccionado / existente"
+                : "Seleccionar Certificado"}
+            </Text>
+          </TouchableOpacity>
+          
+          {/* archivo nuevo seleccionado */}
+          {document && (
+            <Text style={{ marginTop: 5 }}>
+              📄 Nuevo: {document.name}
+            </Text>
+          )}
+          
+          {/* archivo ya guardado en Supabase */}
+          {!document && profile.birthCertificateUrl && (
+            <TouchableOpacity
+              onPress={() => {
+                if (profile?.birthCertificateUrl) {
+                  Linking.openURL(profile.birthCertificateUrl);
+                } else {
+                  Alert.alert("No hay documento");
+                }
+              }}
+            >
+              <Text style={{ color: "blue", marginTop: 5 }}>
+                📎 Ver documento actual
+              </Text>
+            </TouchableOpacity>
+          )}
+          
+          
         </View>
         
         {/* BOTÓN */}
-        <TouchableOpacity
-          style={sharedStyles.button}
-          onPress={handleSave}
-        >
-          <Text style={sharedStyles.buttonText}>Guardar Perfil</Text>
-        </TouchableOpacity>
+        {
+          loading ? (
+            <ActivityIndicator
+              size="large"
+            />
+          ) : (
+            <TouchableOpacity
+              style={sharedStyles.button}
+              onPress={handleSave}
+            >
+              <Text style={sharedStyles.buttonText}>
+                Guardar Perfil
+              </Text>
+            </TouchableOpacity>
+          )
+        }
       
       </ScrollView>
     </CardProfile>
- 
+
   );
 }
+
+
