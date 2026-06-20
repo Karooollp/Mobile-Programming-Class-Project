@@ -28,14 +28,11 @@ export function LoginScreen({navigation}: any) {
       Alert.alert("Error", error.message);
       return;
     }
-    
     const user = data.user;
-    
     dispatch(setUser(user));
     
-    // 🔥 SIEMPRE RECARGAR PERFIL COMPLETO
+    // SIEMPRE RECARGAR PERFIL COMPLETO
     const profile = await fetchUserProfile(user.id);
-    
     if (!profile) {
       Alert.alert("Error", "No se pudo cargar el perfil");
       return;
@@ -45,7 +42,6 @@ export function LoginScreen({navigation}: any) {
     
     navigation.replace("UserTabs");
   };
-
     return (
         <LoginAndRegisterCard>
             <CustomInput

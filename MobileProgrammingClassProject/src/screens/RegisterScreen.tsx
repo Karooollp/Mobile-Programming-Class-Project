@@ -120,12 +120,10 @@ export default function RegisterScreen({ navigation }: any) {
         email,
         password,
       });
-      
       if (error) {
         Alert.alert("Error", error.message);
         return;
       }
-      
       const userId = data.user?.id;
       
       if (userId) {
@@ -145,8 +143,7 @@ export default function RegisterScreen({ navigation }: any) {
           Alert.alert("Error perfil", profileError.message);
           return;
         }
-        
-        // 🔥 AQUÍ VA REDUX (REEMPLAZA EL CONTEXT)
+        // REDUX (REEMPLAZA EL CONTEXT)
         dispatch(
           setProfile({
             user_id: userId,
