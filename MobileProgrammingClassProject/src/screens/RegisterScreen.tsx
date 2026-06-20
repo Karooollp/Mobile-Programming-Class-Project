@@ -19,8 +19,7 @@ import {
 } from "../utils/validators/profileValidator";
 import {useAppDispatch} from "../store/hooks";
 import { setProfile } from "../store/slices/userProfileSlice";
-
-
+import * as WebBrowser from "expo-web-browser";
 
 export default function RegisterScreen({ navigation }: any) {
   const dispatch = useAppDispatch();
@@ -169,6 +168,98 @@ export default function RegisterScreen({ navigation }: any) {
     }
   };
   
+  
+  const handleGoogleRegister = async () => {
+    const redirectUrl = "com.misap.caremaphealth://auth/callback";
+    
+    const { data, error } = await Supabase.auth.signInWithOAuth({
+      provider: "google",
+      options: {
+        redirectTo: redirectUrl,
+      },
+    });
+    
+    if (error) {
+      Alert.alert("Error", error.message);
+      return;
+    }
+    
+    const result = await WebBrowser.openAuthSessionAsync(
+      data.url,
+      redirectUrl
+    );
+    
+    if (result.type !== "success") return;
+    
+    const params = new URLSearchParams(result.url.split("#")[1]);
+    
+    const access_token = params.get("access_token");
+    const refresh_token = params.get("refresh_token");
+    
+    if (!access_token || !refresh_token) {
+      Alert.alert("Error", "No se pudo obtener la sesión");
+      return;
+    }
+    
+    const { data: sessionData, error: sessionError } =
+      await Supabase.auth.setSession({
+        access_token,
+        refresh_token,
+      });
+    
+    if (sessionError) {
+      Alert.alert("Error", sessionError.message);
+      return;
+    }
+    
+    const user = sessionData.user;
+    
+    if (!user) {
+      Alert.alert("Error", "No se obtuvo el usuario");
+      return;
+    }
+    
+    // EXTRAER DATOS DE GOOGLE
+    const fullName = user.user_metadata?.full_name || "";
+    const firstName = fullName.split(" ")[0] || "";
+    const lastName = fullName.split(" ")[1] || "";
+    const email = user.email || "";
+    
+    // 🗄️ GUARDAR EN BD (igual que register normal)
+    const { error: profileError } = await Supabase
+      .from("users")
+      .upsert([
+        {
+          user_id: user.id,
+          first_name: firstName,
+          last_name: lastName,
+          email,
+          status: "active",
+        },
+      ]);
+    
+    if (profileError) {
+      Alert.alert("Error perfil", profileError.message);
+      return;
+    }
+    
+    // REDUX PROFILE (MISMO FLUJO QUE REGISTER NORMAL)
+    dispatch(
+      setProfile({
+        user_id: user.id,
+        first_Name: firstName,
+        last_Name: lastName,
+        email,
+        status: "active",
+        profileCompleted: false,
+      })
+    );
+    
+    Alert.alert("Éxito", "Usuario registrado correctamente");
+    
+    navigation.navigate("EditProfile");
+  };
+  
   return (
     <LoginAndRegisterCard>
       
@@ -230,7 +321,15 @@ export default function RegisterScreen({ navigation }: any) {
           onPress={handleRegister}
         />
       </View>
-    
+      
+      <View style={styles.buttonContainer}>
+        <CustomButton
+          title={"Continuar con Google"}
+          variant="primary"
+          onPress={handleGoogleRegister}
+        />
+      </View>
+      
     </LoginAndRegisterCard>
   );
 }

@@ -37,7 +37,7 @@ export default function StackNavigator (){
             <Stack.Screen name="Login" component={LoginScreen}/>
             <Stack.Screen name="Register" component={RegisterScreen} />
             
-            {/*Añadimos UserTabs apuntando al placeholder y bloqueando el retroceso 🔒 */}
+            {/*Añadimos UserTabs apuntando al placeholder y bloqueando el retroceso  */}
             <Stack.Screen
             name="UserTabs"
             component={TabNavigator} 
