@@ -80,8 +80,6 @@ export default function EditProfileScreen({navigation}:any) {
   const [loading, setLoading] =
     useState(false);
   
-  
-  
   useEffect(() => {
     if (!profile) return;
     
@@ -101,9 +99,6 @@ export default function EditProfileScreen({navigation}:any) {
       profile.birthDate ? new Date(profile.birthDate) : null
     );
   }, [profile]);
-  
-  
-  
   
   const [errors, setErrors] = useState({
     age: "",
@@ -151,8 +146,6 @@ export default function EditProfileScreen({navigation}:any) {
     setBloodType(value);
     setErrors((p) => ({ ...p, bloodType: validateBloodType(value) || "" }));
   };
-  
-
   
   const pickDocument = async () => {
     const result =

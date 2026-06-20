@@ -1,9 +1,9 @@
 import { Supabase } from "../lib/Supabase";
 import * as DocumentPicker from "expo-document-picker";
+import {Alert} from "react-native";
 
 export const uploadImage = async (userId: string, imageUri: string) => {
-  const fileName = `${userId}-${Date.now()}.jpg`;
-  
+  const fileName = `${userId}/profile.jpg`;
   const formData = new FormData();
   
   formData.append("file", {
@@ -32,7 +32,22 @@ export const uploadDocument = async (
   userId: string,
   file: DocumentPicker.DocumentPickerAsset
 ) => {
-  const fileName = `${userId}-${Date.now()}.${file.name.split(".").pop() || "pdf"}`;
+  
+  
+  
+  const isPdf =
+    file.mimeType === "application/pdf" ||
+    file.name.toLowerCase().endsWith(".pdf")
+  
+  
+  if (!isPdf) {
+    Alert.alert(
+      "Archivo no válido",
+      "Solo se permiten archivos PDF."
+    );
+    return;
+  }
+  const fileName = `${userId}/medical-file.pdf`;
   
   const formData = new FormData();
   
