@@ -1,26 +1,15 @@
 import React from "react";
-import { View, Text, StyleSheet } from "react-native";
+import { StyleSheet } from "react-native";
 import { createBottomTabNavigator } from "@react-navigation/bottom-tabs";
 import { Ionicons } from "@expo/vector-icons";
 
 import HomeScreen from "../screens/HomeScreen";
 import DashboardScreen from "../screens/DashboardScreen";
 import ProfileScreen from "../screens/ProfileScreen";
+import ChatScreen from "../screens/ChatScreen"; // 👈 ¡Importamos tu chat real aquí, bb! :3
 
 // Creamos la instancia del Tab Navigator 
 const Tab = createBottomTabNavigator();
-
-// ─── Pantalla temporal del Chatbot ─────────────────────────────────────────
-function ChatbotScreen() {
-  return (
-    <View style={styles.chatbotContainer}>
-      <Ionicons name="chatbubble-ellipses-outline" size={52} color="#94A3B8" />
-      <Text style={styles.chatbotText}>
-        Módulo de Chatbot Inteligente (Próximamente)
-      </Text>
-    </View>
-  );
-}
 
 // ─── TabNavigator principal ────────────────────────────────────────────────
 export default function TabNavigator() {
@@ -56,7 +45,7 @@ export default function TabNavigator() {
     >
       <Tab.Screen name="Inicio"   component={HomeScreen} />
       <Tab.Screen name="Métricas" component={DashboardScreen} />
-      <Tab.Screen name="Chatbot"  component={ChatbotScreen} />
+      <Tab.Screen name="Chatbot"  component={ChatScreen} />
       <Tab.Screen name="Perfil"   component={ProfileScreen} />
     </Tab.Navigator>
   );
@@ -83,23 +72,5 @@ const styles = StyleSheet.create({
   tabLabel: {
     fontSize: 11,
     fontWeight: "600",
-  },
-
-  // Pantalla placeholder del Chatbot
-  chatbotContainer: {
-    flex: 1,
-    backgroundColor: "#F8FAFC",
-    justifyContent: "center",
-    alignItems: "center",
-    gap: 14,
-    paddingHorizontal: 36,
-  },
-
-  chatbotText: {
-    fontSize: 15,
-    color: "#64748B",
-    textAlign: "center",
-    fontWeight: "500",
-    lineHeight: 24,
   },
 });

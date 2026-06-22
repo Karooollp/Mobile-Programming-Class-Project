@@ -5,12 +5,20 @@ import CardProfile, { sharedStyles } from "../components/CardProfile";
 import CustomButton from "../components/CustomButton";
 
 export default function ProfileScreen({ navigation }: any) {
-  const { profile } = useCaremapHealth();
+  // 🌟 Extraemos profile, isDarkMode y toggleTheme desde tu contexto
+  const { profile, isDarkMode, toggleTheme } = useCaremapHealth();
   
   return (
     <CardProfile
       footer={
         <View style={{ width: "100%", gap: 10 }}>
+          {/* 🌙 ¡Botón para cambiar el Modo Oscuro / Claro! ☀️ */}
+          <CustomButton
+            title={isDarkMode ? "Cambiar a Modo Claro ☀️" : "Cambiar a Modo Oscuro 🌙"}
+            variant="secondary"
+            onPress={toggleTheme}
+          />
+
           <CustomButton
             title="Editar perfil"
             onPress={() => navigation.navigate("EditProfile")}
@@ -19,7 +27,6 @@ export default function ProfileScreen({ navigation }: any) {
             title="Cerrar sesión"
             onPress={() => navigation.navigate("Login")}
           />
-          {/* Botón de acceso rápido agregado para pruebas cómodas */}
           <CustomButton
             title="Ir a Inicio / Dashboard"
             variant="secondary"
