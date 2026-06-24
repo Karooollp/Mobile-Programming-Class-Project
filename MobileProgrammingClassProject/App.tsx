@@ -7,12 +7,8 @@ import { navigationRef } from "./src/navigation/NavigationService";
 
 export default function App() {
   return (
-    <CaremapHealthProvider>
-      <Provider store={store}>
-        <NavigationContainer ref={navigationRef}>
-          <StackNavigator />
-        </NavigationContainer>
-      </Provider>
-    </CaremapHealthProvider>
+    <NavigationContainer>
+      <StackNavigator />
+    </NavigationContainer>
   );
 }
