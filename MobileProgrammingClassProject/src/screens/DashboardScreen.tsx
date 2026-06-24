@@ -3,7 +3,7 @@ import { View, Text, ScrollView, StyleSheet, Alert, TouchableOpacity } from "rea
 import { useCaremapHealth } from "../contexts/CaremapHealthContexts"; // 👈 Importamos tu context
 
 export default function DashboardScreen() {
-  const { colors } = useCaremapHealth(); // 👈 Obtenemos colores globales
+  const { colors } = useCaremapHealth(); 
   const [dosisTomadas, setDosisTomadas] = useState(2);
   const dosisTotales = 3;
 

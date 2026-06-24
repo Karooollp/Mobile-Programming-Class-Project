@@ -3,7 +3,7 @@ import { View, Text, ScrollView, StyleSheet, TouchableOpacity, Alert } from "rea
 import { useCaremapHealth } from "../contexts/CaremapHealthContexts";
 
 export default function HomeScreen() {
-  const { colors } = useCaremapHealth(); // 🌙 Traemos los colores dinámicos
+  const { colors } = useCaremapHealth();
   const [actividadesCompletadas, setActividadesCompletadas] = useState(false);
 
   const handleCompletarDia = () => {

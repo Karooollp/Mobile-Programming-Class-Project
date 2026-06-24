@@ -1,8 +1,21 @@
-import { createContext, useContext, useState } from "react";
-import { useColorScheme } from "react-native"; // 👈 Importamos para detectar el tema del sistema
-import { UserProfile } from "../utils/types/Types";
+import React, { createContext, useContext, useState } from "react";
+import { useColorScheme } from "react-native";
 
-// 1. Definimos la paleta de colores global 🎨
+export type UserProfile = {
+  user_id: string;
+  first_name: string;
+  last_name: string;
+  email: string;
+  age?: number;
+  phone?: string;
+  address?: string;
+  gender?: string;
+  blood_type?: string;
+  emergency_contact?: string;
+  birth_date?: string | null;
+  photo_url?: string | null;
+};
+
 export const PaletaColores = {
   light: {
     background: "#F8FAFC",
@@ -10,24 +23,23 @@ export const PaletaColores = {
     textPrimary: "#0F172A",
     textSecondary: "#64748B",
     border: "#E2E8F0",
-    primary: "#0284C7", // Tu azul Caremap 🩺
+    primary: "#0284C7",
     cardShadow: "#000",
   },
   dark: {
-    background: "#0F172A", // Slate oscuro 🌙
+    background: "#0F172A",
     surface: "#1E293B",
     textPrimary: "#F1F5F9",
     textSecondary: "#94A3B8",
     border: "#334155",
-    primary: "#38BDF8", // Un celeste más brillante para que resalte en lo oscuro
+    primary: "#38BDF8",
     cardShadow: "#000",
   },
 };
 
-// 2. Actualizamos el tipo del contexto con las 3 nuevas propiedades 🛠️
 type CaremapHealthContextsType = {
   profile: UserProfile;
-  updateProfile: (profile: Partial<UserProfile>) => void;
+  updateProfile: (updates: Partial<UserProfile>) => void;
   isDarkMode: boolean;
   toggleTheme: () => void;
   colors: typeof PaletaColores.light;
@@ -35,20 +47,9 @@ type CaremapHealthContextsType = {
 
 const defaultProfile: UserProfile = {
   user_id: "",
-  first_Name: "",
-  last_Name: "",
-  age: null,
-  gender: null,
-  birthDate: null,
-  photoUrl: null,
-  phone: null,
+  first_name: "",
+  last_name: "",
   email: "",
-  address: null,
-  bloodType: null,
-  emergencyContact: null,
-  status: "active",
-  createdAt: new Date().toISOString(),
-  profileCompleted: false,
 };
 
 const CaremapHealthContext = createContext<CaremapHealthContextsType | null>(null);
@@ -67,8 +68,7 @@ export const CaremapHealthProvider = ({
   children: React.ReactNode;
 }) => {
   const [profile, setProfile] = useState<UserProfile>(defaultProfile);
-  
-  // 3. Agregamos el estado para el modo oscuro 🌙
+
   const systemScheme = useColorScheme();
   const [isDarkMode, setIsDarkMode] = useState(systemScheme === "dark");
 
@@ -76,21 +76,13 @@ export const CaremapHealthProvider = ({
     setProfile((prev) => ({ ...prev, ...updates }));
   };
 
-  // 4. Función para cambiar entre modos
   const toggleTheme = () => setIsDarkMode((prev) => !prev);
 
-  // 5. Elegimos los colores activos dependiendo del estado del booleano
   const colors = isDarkMode ? PaletaColores.dark : PaletaColores.light;
 
   return (
-    <CaremapHealthContext.Provider 
-      value={{ 
-        profile, 
-        updateProfile, 
-        isDarkMode, 
-        toggleTheme, 
-        colors 
-      }}
+    <CaremapHealthContext.Provider
+      value={{ profile, updateProfile, isDarkMode, toggleTheme, colors }}
     >
       {children}
     </CaremapHealthContext.Provider>
