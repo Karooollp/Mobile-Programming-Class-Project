@@ -3,9 +3,11 @@ import { View, Text, StyleSheet, FlatList, KeyboardAvoidingView, Platform, Activ
 import { SafeAreaView } from "react-native-safe-area-context";
 import * as ImagePicker from "expo-image-picker"; 
 import { preguntarAGroq } from "../lib/groqService"; 
-import { useCaremapHealth } from "../contexts/CaremapHealthContexts"; 
 import CustomInput from "../components/CustomInput";
 import CustomButton from "../components/CustomButton";
+
+// 📦 Importamos los hooks de Redux creados por tu compañero
+import { useAppSelector } from "../store/hooks";
 
 interface Mensaje {
   id: string;
@@ -15,7 +17,18 @@ interface Mensaje {
 }
 
 export default function ChatScreen() {
-  const { colors } = useCaremapHealth();
+  // 🎨 Cambiado a Redux para extraer los colores globales de forma limpia
+  const theme = useAppSelector((state: any) => state.theme || state.userProfile?.theme);
+  // Fallback seguro por si las moscas para que nunca falle al compilar
+  const colors = theme?.colors || {
+    background: "#F8FAFC",
+    surface: "#FFFFFF",
+    primary: "#0284C7",
+    border: "#E2E8F0",
+    textPrimary: "#0F172A",
+    textSecondary: "#64748B"
+  };
+
   const [mensajes, setMensajes] = useState<Mensaje[]>([
     { id: "1", texto: "¡Hola, soy tu asistente de Caremap Health! 🩺 ¿En qué puedo ayudarte a cuidar tu bienestar hoy? :3", remitente: "ia" }
   ]);
@@ -237,7 +250,6 @@ const styles = StyleSheet.create({
   loadingContainer: { flexDirection: "row", alignItems: "center", paddingHorizontal: 20, paddingVertical: 8, gap: 8 },
   loadingText: { fontSize: 13, fontStyle: "italic" },
   inputBar: { flexDirection: "row", alignItems: "center", paddingHorizontal: 12, paddingVertical: 8, borderTopWidth: 1, gap: 8 },
-  // ✨ Estilos modificados para el botón "+" estilo circular de GPT
   plusButton: { height: 40, width: 40, borderRadius: 20, justifyContent: "center", alignItems: "center", borderWidth: 1 }, 
   plusIcon: { fontSize: 22, fontWeight: "300", marginTop: -2 },
   buttonWrapper: { width: 90, justifyContent: "center", marginBottom: 8 },
