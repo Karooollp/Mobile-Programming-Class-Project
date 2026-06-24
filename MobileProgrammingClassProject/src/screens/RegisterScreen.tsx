@@ -1,15 +1,30 @@
 import { useState } from "react";
 import { Alert, Text, View, StyleSheet } from "react-native";
+
 import CustomButton from "../components/CustomButton";
 import CustomInput from "../components/CustomInput";
 import LoginAndRegisterCard from "../components/LoginAndRegisterCard";
+
 import { Supabase } from "../lib/Supabase";
-import { useCaremapHealth } from "../contexts/CaremapHealthContexts";
-import { validateText, validateEmail, validatePassword } from "../utils/validators/profileValidator";
+
+import {
+  validateText,
+  validateEmail,
+  validatePassword,
+} from "../utils/validators/profileValidator";
+
+import { useAppDispatch } from "../store/hooks";
+import { setProfile } from "../store/slices/userProfileSlice";
+
 import * as WebBrowser from "expo-web-browser";
 
+// 🎨 SOLO UI
+import { useCaremapHealth } from "../contexts/CaremapHealthContexts";
+
 export default function RegisterScreen({ navigation }: any) {
-  const { updateProfile, colors } = useCaremapHealth();
+  const dispatch = useAppDispatch();
+
+  const { colors } = useCaremapHealth();
 
   const [firstName, setFirstName] = useState("");
   const [lastName, setLastName] = useState("");
@@ -23,41 +38,22 @@ export default function RegisterScreen({ navigation }: any) {
     password: "",
   });
 
-  const handleFirstName = (value: string) => {
-    setFirstName(value);
-    setErrors((prev) => ({ ...prev, firstName: validateText(value, "Nombre") || "" }));
-  };
-
-  const handleLastName = (value: string) => {
-    setLastName(value);
-    setErrors((prev) => ({ ...prev, lastName: validateText(value, "Apellido") || "" }));
-  };
-
-  const handleEmail = (value: string) => {
-    setEmail(value);
-    setErrors((prev) => ({ ...prev, email: "" }));
-  };
-
-  const handlePassword = (value: string) => {
-    setPassword(value);
-    setErrors((prev) => ({ ...prev, password: validatePassword(value) || "" }));
-  };
-
   const handleRegister = async () => {
-    if (!firstName.trim() || !lastName.trim() || !email.trim() || !password.trim()) {
-      return Alert.alert("Campos Obligatorios", "Por favor, llena todos los campos.");
+    if (!firstName || !lastName || !email || !password) {
+      return Alert.alert("Campos obligatorios", "Completa todos los campos");
     }
 
-    const emailValidationError = validateEmail(email);
+    const emailError = validateEmail(email);
+
     const validations = {
       firstName: validateText(firstName, "Nombre"),
       lastName: validateText(lastName, "Apellido"),
-      email: emailValidationError,
+      email: emailError,
       password: validatePassword(password),
     };
 
-    if (!email.includes("@") || emailValidationError) {
-      return Alert.alert("Error de Correo", "El correo electrónico es inválido.");
+    if (emailError) {
+      return Alert.alert("Error", "Correo inválido");
     }
 
     setErrors({
@@ -67,35 +63,53 @@ export default function RegisterScreen({ navigation }: any) {
       password: validations.password || "",
     });
 
-    const hasErrors = Object.values(validations).some(Boolean);
-    if (hasErrors) return Alert.alert("Error", "Corrige los campos marcados");
-
-    try {
-      const { data, error } = await Supabase.auth.signUp({ email, password });
-      if (error) return Alert.alert("Error", error.message);
-
-      const userId = data.user?.id;
-      if (userId) {
-        const { error: profileError } = await Supabase
-          .from("users")
-          .insert([{ user_id: userId, first_name: firstName, last_name: lastName, email, status: "active" }]);
-
-        if (profileError) return Alert.alert("Error perfil", profileError.message);
-
-        updateProfile({
-          user_id: userId,
-          first_name: firstName,
-          last_name: lastName,
-          email,
-        });
-      }
-
-      Alert.alert("Éxito", "Usuario registrado correctamente");
-      navigation.navigate("EditProfile");
-    } catch (err) {
-      console.log(err);
-      Alert.alert("Error", "Ocurrió un error inesperado");
+    if (Object.values(validations).some(Boolean)) {
+      return Alert.alert("Error", "Corrige los campos");
     }
+
+    const { data, error } = await Supabase.auth.signUp({
+      email,
+      password,
+    });
+
+    if (error) {
+      return Alert.alert("Error", error.message);
+    }
+
+    const userId = data.user?.id;
+
+    if (!userId) return;
+
+    const { error: profileError } = await Supabase
+      .from("users")
+      .insert([
+        {
+          user_id: userId,
+          first_Name: firstName,
+          last_Name: lastName,
+          email,
+          status: "active",
+        },
+      ]);
+
+    if (profileError) {
+      return Alert.alert("Error perfil", profileError.message);
+    }
+
+    // 📦 REDUX
+    dispatch(
+      setProfile({
+        user_id: userId,
+        first_Name: firstName,
+        last_Name: lastName,
+        email,
+        status: "active",
+        profileCompleted: false,
+      })
+    );
+
+    Alert.alert("Éxito", "Usuario registrado correctamente");
+    navigation.navigate("EditProfile");
   };
 
   const handleGoogleRegister = async () => {
@@ -106,59 +120,69 @@ export default function RegisterScreen({ navigation }: any) {
       options: { redirectTo: redirectUrl },
     });
 
-    if (error) {
-      Alert.alert("Error", error.message);
-      return;
-    }
+    if (error) return Alert.alert("Error", error.message);
 
-    const result = await WebBrowser.openAuthSessionAsync(data.url, redirectUrl);
+    const result = await WebBrowser.openAuthSessionAsync(
+      data.url,
+      redirectUrl
+    );
+
     if (result.type !== "success") return;
 
     const params = new URLSearchParams(result.url.split("#")[1]);
+
     const access_token = params.get("access_token");
     const refresh_token = params.get("refresh_token");
 
     if (!access_token || !refresh_token) {
-      Alert.alert("Error", "No se pudo obtener la sesión");
-      return;
+      return Alert.alert("Error", "No se pudo obtener sesión");
     }
 
-    const { data: sessionData, error: sessionError } = await Supabase.auth.setSession({
-      access_token,
-      refresh_token,
-    });
+    const { data: sessionData, error: sessionError } =
+      await Supabase.auth.setSession({
+        access_token,
+        refresh_token,
+      });
 
     if (sessionError) {
-      Alert.alert("Error", sessionError.message);
-      return;
+      return Alert.alert("Error", sessionError.message);
     }
 
     const user = sessionData.user;
-    if (!user) {
-      Alert.alert("Error", "No se obtuvo el usuario");
-      return;
-    }
+
+    if (!user) return;
 
     const fullName = user.user_metadata?.full_name || "";
-    const googleFirstName = fullName.split(" ")[0] || "";
-    const googleLastName = fullName.split(" ")[1] || "";
-    const googleEmail = user.email || "";
+    const first = fullName.split(" ")[0] || "";
+    const last = fullName.split(" ")[1] || "";
 
     const { error: profileError } = await Supabase
       .from("users")
-      .upsert([{ user_id: user.id, first_name: googleFirstName, last_name: googleLastName, email: googleEmail, status: "active" }]);
+      .upsert([
+        {
+          user_id: user.id,
+          first_Name: first,
+          last_Name: last,
+          email: user.email,
+          status: "active",
+        },
+      ]);
 
     if (profileError) {
-      Alert.alert("Error perfil", profileError.message);
-      return;
+      return Alert.alert("Error perfil", profileError.message);
     }
 
-    updateProfile({
-      user_id: user.id,
-      first_name: googleFirstName,
-      last_name: googleLastName,
-      email: googleEmail,
-    });
+    // 📦 REDUX
+    dispatch(
+      setProfile({
+        user_id: user.id,
+        first_Name: first,
+        last_Name: last,
+        email: user.email || "",
+        status: "active",
+        profileCompleted: false,
+      })
+    );
 
     Alert.alert("Éxito", "Usuario registrado correctamente");
     navigation.navigate("EditProfile");
@@ -170,15 +194,38 @@ export default function RegisterScreen({ navigation }: any) {
         Primera App Móvil de Misap
       </Text>
 
-      <CustomInput type="text" placeholder="Ingresa tu nombre *" value={firstName} onChange={handleFirstName} />
+      <CustomInput
+        type="text"
+        placeholder="Nombre *"
+        value={firstName}
+        onChange={setFirstName}
+      />
+
       {errors.firstName && <Text style={styles.error}>{errors.firstName}</Text>}
 
-      <CustomInput type="text" placeholder="Ingresa tu apellido *" value={lastName} onChange={handleLastName} />
+      <CustomInput
+        type="text"
+        placeholder="Apellido *"
+        value={lastName}
+        onChange={setLastName}
+      />
+
       {errors.lastName && <Text style={styles.error}>{errors.lastName}</Text>}
 
-      <CustomInput type="email" placeholder="correo@gmail.com *" value={email} onChange={handleEmail} />
+      <CustomInput
+        type="email"
+        placeholder="Correo *"
+        value={email}
+        onChange={setEmail}
+      />
 
-      <CustomInput type="password" placeholder="Ingresa tu contraseña *" value={password} onChange={handlePassword} />
+      <CustomInput
+        type="password"
+        placeholder="Contraseña *"
+        value={password}
+        onChange={setPassword}
+      />
+
       {errors.password && <Text style={styles.error}>{errors.password}</Text>}
 
       <View style={styles.buttonContainer}>
@@ -186,7 +233,11 @@ export default function RegisterScreen({ navigation }: any) {
       </View>
 
       <View style={styles.buttonContainer}>
-        <CustomButton title="Continuar con Google" variant="primary" onPress={handleGoogleRegister} />
+        <CustomButton
+          title="Continuar con Google"
+          variant="primary"
+          onPress={handleGoogleRegister}
+        />
       </View>
     </LoginAndRegisterCard>
   );

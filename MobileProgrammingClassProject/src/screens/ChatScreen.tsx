@@ -15,13 +15,15 @@ interface Mensaje {
 }
 
 export default function ChatScreen() {
-  const { colors } = useCaremapHealth(); // ✅ Contexto en lugar de Redux
+  const { colors } = useCaremapHealth();
 
   const [mensajes, setMensajes] = useState<Mensaje[]>([
-    { id: "1", texto: "¡Hola, soy tu asistente de Caremap Health! 🩺 ¿En qué puedo ayudarte a cuidar tu bienestar hoy? :3", remitente: "ia" }
+    { id: "1", texto: "¡Hola, soy tu asistente de Caremap Health! ¿En qué puedo ayudarte a cuidar tu bienestar hoy? :3", remitente: "ia" }
   ]);
   const [nuevoMensaje, setNuevoMensaje] = useState("");
   const [cargando, setCargando] = useState(false);
+  const [imagenTemporal, setImagenTemporal] = useState<ImagePicker.ImagePickerAsset | null>(null);
+  
   const flatListRef = useRef<FlatList>(null);
 
   const hacerScrollAlFinal = () => {
@@ -30,7 +32,7 @@ export default function ChatScreen() {
 
   const mostrarMenuAdjuntar = () => {
     if (cargando) return;
-    const opciones = ["📸 Tomar Foto (Cámara)", "🖼️ Elegir de la Galería", "Cancelar"];
+    const opciones = ["Tomar Foto (Cámara)", "Elegir de la Galería", "Cancelar"];
     const botonCancelarIndice = 2;
     if (Platform.OS === "ios") {
       ActionSheetIOS.showActionSheetWithOptions(
@@ -42,8 +44,8 @@ export default function ChatScreen() {
       );
     } else {
       Alert.alert("Adjuntar contenido", "¿De dónde quieres obtener la foto?", [
-        { text: "📸 Cámara", onPress: abrirCamaraEnVivo },
-        { text: "🖼️ Galería", onPress: abrirGaleriaFotos },
+        { text: "Cámara", onPress: abrirCamaraEnVivo },
+        { text: "Galería", onPress: abrirGaleriaFotos },
         { text: "Cancelar", style: "cancel" }
       ], { cancelable: true });
     }
@@ -51,51 +53,72 @@ export default function ChatScreen() {
 
   const abrirCamaraEnVivo = async () => {
     const permiso = await ImagePicker.requestCameraPermissionsAsync();
-    if (!permiso.granted) { Alert.alert("Permisos necesarios", "¡Oye! Necesitamos acceso a tu cámara."); return; }
+    if (!permiso.granted) { Alert.alert("Permisos necesarios", "Necesitamos acceso a tu cámara."); return; }
     const resultado = await ImagePicker.launchCameraAsync({ mediaTypes: ['images'], quality: 0.4, base64: true });
-    if (!resultado.canceled && resultado.assets[0]) procesarImagenIA(resultado.assets[0]);
+    if (!resultado.canceled && resultado.assets[0]) {
+      setImagenTemporal(resultado.assets[0]);
+    }
   };
 
   const abrirGaleriaFotos = async () => {
     const permiso = await ImagePicker.requestMediaLibraryPermissionsAsync();
-    if (!permiso.granted) { Alert.alert("Permisos necesarios", "¡Oye! Ocupamos acceso a tus fotos. 😿"); return; }
+    if (!permiso.granted) { Alert.alert("Permisos necesarios", "Ocupamos acceso a tus fotos."); return; }
     const resultado = await ImagePicker.launchImageLibraryAsync({ mediaTypes: ['images'], quality: 0.4, base64: true });
-    if (!resultado.canceled && resultado.assets[0]) procesarImagenIA(resultado.assets[0]);
+    if (!resultado.canceled && resultado.assets[0]) {
+      setImagenTemporal(resultado.assets[0]);
+    }
   };
 
-  const procesarImagenIA = async (fotoSeleccionada: ImagePicker.ImagePickerAsset) => {
-    const mensajeFotoUsuario: Mensaje = { id: Date.now().toString(), imagenUrl: fotoSeleccionada.uri, remitente: "usuario" };
-    setMensajes((prev) => [...prev, mensajeFotoUsuario]);
+  const enviarMensaje = async () => {
+    const textoUsuario = nuevoMensaje.trim();
+    
+    if (!textoUsuario && !imagenTemporal) return;
+    if (cargando) return;
+
+    const idMensaje = Date.now().toString();
+    
+    const nuevoMensajeUsuario: Mensaje = {
+      id: idMensaje,
+      remitente: "usuario",
+      ...(textoUsuario ? { texto: textoUsuario } : {}),
+      ...(imagenTemporal ? { imagenUrl: imagenTemporal.uri } : {})
+    };
+
+    setMensajes((prev) => [...prev, nuevoMensajeUsuario]);
+    
+    const fotoParaEnviar = imagenTemporal;
+    setNuevoMensaje("");
+    setImagenTemporal(null);
+    
     setCargando(true);
     hacerScrollAlFinal();
+
     try {
-      const promptVisual = "Analiza esta imagen y dime si tiene relación con el bienestar, alimentación o salud, dame tus comentarios lindos.";
-      const respuestaIA = await preguntarAGroq(promptVisual, fotoSeleccionada.base64 ?? undefined);
+      let respuestaIA = "";
+      
+      if (fotoParaEnviar) {
+        const promptVisual = textoUsuario 
+          ? `El usuario te manda esta imagen con el siguiente comentario: "${textoUsuario}". Analízala basándote en la salud y el bienestar.`
+          : "Analiza esta imagen y dime si tiene relación con el bienestar, alimentación o salud.";
+        
+        respuestaIA = await preguntarAGroq(promptVisual, fotoParaEnviar.base64 ?? undefined);
+      } else {
+        respuestaIA = await preguntarAGroq(textoUsuario);
+      }
+
       setMensajes((prev) => [...prev, { id: (Date.now() + 1).toString(), texto: respuestaIA, remitente: "ia" }]);
     } catch (error) {
-      console.error("Error al procesar imagen con Groq:", error);
+      console.error("Error al procesar en Groq:", error);
     } finally {
       setCargando(false);
       hacerScrollAlFinal();
     }
   };
 
-  const enviarMensaje = async () => {
-    if (!nuevoMensaje.trim() || cargando) return;
-    const textoUsuario = nuevoMensaje.trim();
-    setNuevoMensaje("");
-    setMensajes((prev) => [...prev, { id: Date.now().toString(), texto: textoUsuario, remitente: "usuario" }]);
-    setCargando(true);
-    hacerScrollAlFinal();
-    const respuestaIA = await preguntarAGroq(textoUsuario);
-    setMensajes((prev) => [...prev, { id: (Date.now() + 1).toString(), texto: respuestaIA, remitente: "ia" }]);
-    setCargando(false);
-    hacerScrollAlFinal();
-  };
-
   return (
     <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]} edges={["top"]}>
       <KeyboardAvoidingView style={styles.container} behavior={Platform.OS === "ios" ? "padding" : "height"} keyboardVerticalOffset={Platform.OS === "ios" ? 90 : 60}>
+        
         <FlatList
           ref={flatListRef}
           data={mensajes}
@@ -112,23 +135,42 @@ export default function ChatScreen() {
             </View>
           )}
         />
+
         {cargando && (
           <View style={styles.loadingContainer}>
             <ActivityIndicator size="small" color={colors.primary} />
-            <Text style={[styles.loadingText, { color: colors.textSecondary }]}>Caremap IA está pensando... 7u7</Text>
+            <Text style={[styles.loadingText, { color: colors.textSecondary }]}>Caremap IA está pensando...</Text>
           </View>
         )}
-        <View style={[styles.inputBar, { backgroundColor: colors.surface, borderColor: colors.border }]}>
-          <TouchableOpacity style={[styles.plusButton, { backgroundColor: colors.background, borderColor: colors.border }]} onPress={mostrarMenuAdjuntar}>
-            <Text style={[styles.plusIcon, { color: colors.textSecondary }]}>+</Text>
-          </TouchableOpacity>
-          <View style={{ flex: 1 }}>
-            <CustomInput type="text" placeholder="Pregúntame lo que quieras..." value={nuevoMensaje} onChange={setNuevoMensaje} />
+
+        <View style={[styles.inputContainerGlobal, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+          
+          {imagenTemporal && (
+            <View style={[styles.previewWrapper, { borderColor: colors.border }]}>
+              <View style={styles.imageContainerRelative}>
+                <Image source={{ uri: imagenTemporal.uri }} style={styles.previewImagen} />
+                <TouchableOpacity style={styles.deletePreviewButton} onPress={() => setImagenTemporal(null)}>
+                  <Text style={styles.deletePreviewText}>✕</Text>
+                </TouchableOpacity>
+              </View>
+              <Text style={[styles.waitingText, { color: colors.textSecondary }]}>Imagen en espera para enviar</Text>
+            </View>
+          )}
+
+          <View style={styles.inputBar}>
+            <TouchableOpacity style={[styles.plusButton, { backgroundColor: colors.background, borderColor: colors.border }]} onPress={mostrarMenuAdjuntar}>
+              <Text style={[styles.plusIcon, { color: colors.textSecondary }]}>+</Text>
+            </TouchableOpacity>
+            <View style={{ flex: 1 }}>
+              <CustomInput type="text" placeholder={imagenTemporal ? "Comenta algo sobre la foto..." : "Pregúntame lo que quieras..."} value={nuevoMensaje} onChange={setNuevoMensaje} />
+            </View>
+            <View style={styles.buttonWrapper}>
+              <CustomButton title="Enviar" onPress={enviarMensaje} variant="primary" />
+            </View>
           </View>
-          <View style={styles.buttonWrapper}>
-            <CustomButton title="Enviar" onPress={enviarMensaje} variant="primary" />
-          </View>
+
         </View>
+
       </KeyboardAvoidingView>
     </SafeAreaView>
   );
@@ -146,8 +188,17 @@ const styles = StyleSheet.create({
   imagenMensaje: { width: 220, height: 160, borderRadius: 12, marginBottom: 6, resizeMode: "cover" },
   loadingContainer: { flexDirection: "row", alignItems: "center", paddingHorizontal: 20, paddingVertical: 8, gap: 8 },
   loadingText: { fontSize: 13, fontStyle: "italic" },
-  inputBar: { flexDirection: "row", alignItems: "center", paddingHorizontal: 12, paddingVertical: 8, borderTopWidth: 1, gap: 8 },
+  
+  inputContainerGlobal: { borderTopWidth: 1, flexDirection: "column" },
+  inputBar: { flexDirection: "row", alignItems: "center", paddingHorizontal: 12, paddingVertical: 8, gap: 8 },
   plusButton: { height: 40, width: 40, borderRadius: 20, justifyContent: "center", alignItems: "center", borderWidth: 1 },
   plusIcon: { fontSize: 22, fontWeight: "300", marginTop: -2 },
   buttonWrapper: { width: 90, justifyContent: "center", marginBottom: 8 },
+  
+  previewWrapper: { padding: 12, flexDirection: "row", alignItems: "center", borderBottomWidth: 1, gap: 12 },
+  imageContainerRelative: { position: "relative", width: 60, height: 60 },
+  previewImagen: { width: 60, height: 60, borderRadius: 8, resizeMode: "cover" },
+  deletePreviewButton: { backgroundColor: "rgba(0,0,0,0.7)", width: 20, height: 20, borderRadius: 10, justifyContent: "center", alignItems: "center", position: "absolute", top: -6, right: -6, zIndex: 10 },
+  deletePreviewText: { color: "#fff", fontSize: 10, fontWeight: "bold" },
+  waitingText: { fontSize: 13, fontStyle: "italic" }
 });
