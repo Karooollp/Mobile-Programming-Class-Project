@@ -1,13 +1,28 @@
 import React from "react";
-import {Text, View, Image, TouchableOpacity, Linking} from "react-native";
-import { useAppSelector } from "../store/hooks";
+import { Text, View, Image, TouchableOpacity, Linking } from "react-native";
+
+// 📦 Redux Hooks
+import { useAppSelector, useAppDispatch } from "../store/hooks";
+// NOTA: Si tu compañero creó una acción para cambiar el tema, impórtala aquí. Ejemplo:
+// import { toggleTheme } from "../store/slices/themeSlice";
 
 import CardProfile, { sharedStyles } from "../components/CardProfile";
 import CustomButton from "../components/CustomButton";
 
 export default function ProfileScreen({ navigation }: any) {
-  const profile = useAppSelector(state => state.userProfile.data);
+  const dispatch = useAppDispatch();
   
+  // 🌟 Extraemos los datos del perfil y del tema desde Redux
+  const profile = useAppSelector(state => state.userProfile.data);
+  const isDarkMode = useAppSelector((state: any) => state.theme?.isDarkMode || false);
+
+  // Función para manejar el cambio de tema mediante Redux si existe la acción
+  const handleToggleTheme = () => {
+    // dispatch(toggleTheme()); 
+    // Por ahora lo dejamos listo por si ocupan disparar la acción de Redux :3
+    console.log("Cambiando tema global desde Redux... 7u7");
+  };
+
   if (!profile) {
     return (
       <View style={{ flex: 1, justifyContent: "center", alignItems: "center" }}>
@@ -15,11 +30,18 @@ export default function ProfileScreen({ navigation }: any) {
       </View>
     );
   }
-  
+
   return (
     <CardProfile
       footer={
         <View style={{ width: "100%", gap: 10 }}>
+          {/* 🌙 ¡Botón para cambiar el Modo Oscuro / Claro! ☀️ */}
+          <CustomButton
+            title={isDarkMode ? "Cambiar a Modo Claro ☀️" : "Cambiar a Modo Oscuro 🌙"}
+            variant="secondary"
+            onPress={handleToggleTheme}
+          />
+
           <CustomButton
             title="Editar perfil"
             onPress={() => navigation.navigate("EditProfile")}
@@ -28,7 +50,6 @@ export default function ProfileScreen({ navigation }: any) {
             title="Cerrar sesión"
             onPress={() => navigation.navigate("Login")}
           />
-          {/* Botón de acceso rápido agregado para pruebas cómodas */}
           <CustomButton
             title="Ir a Inicio / Dashboard"
             variant="secondary"

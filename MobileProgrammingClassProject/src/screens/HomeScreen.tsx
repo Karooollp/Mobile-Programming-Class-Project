@@ -1,11 +1,11 @@
 import React, { useState } from "react";
 import { View, Text, ScrollView, StyleSheet, TouchableOpacity, Alert } from "react-native";
+import { useCaremapHealth } from "../contexts/CaremapHealthContexts";
 
 export default function HomeScreen() {
-  // 1. Estado para simular si las actividades de salud del día ya se completaron
+  const { colors } = useCaremapHealth(); // 🌙 Traemos los colores dinámicos
   const [actividadesCompletadas, setActividadesCompletadas] = useState(false);
 
-  // 2. Función para simular que el usuario completa su rutina clínica diaria
   const handleCompletarDia = () => {
     setActividadesCompletadas(true);
     Alert.alert("¡Todo listo! ✨", "Has completado tus actividades de salud por hoy.");
@@ -13,50 +13,46 @@ export default function HomeScreen() {
 
   return (
     <ScrollView
-      style={styles.screen}
+      style={[styles.screen, { backgroundColor: colors.background }]}
       contentContainerStyle={styles.content}
     >
-      {/* ── Encabezado de bienvenida ──────────────────────────────────── */}
-      <Text style={styles.greeting}>¡Bienvenido! 👋</Text>
-      <Text style={styles.subtitle}>Aquí tienes un resumen de tu día</Text>
+      <Text style={[styles.greeting, { color: colors.textPrimary }]}>¡Bienvenido! 👋</Text>
+      <Text style={[styles.subtitle, { color: colors.textSecondary }]}>Aquí tienes un resumen de tu día</Text>
 
-      {/* ── Tarjeta 1: Resumen del día (AHORA INTERACTIVA) ─────────────── */}
-      <View style={styles.card}>
-        <Text style={styles.cardTitle}>📋 Resumen médico del día</Text>
-        
-        {/* El texto cambia dinámicamente según el estado del día */}
-        <Text style={styles.cardText}>
+      {/* Tarjeta 1 */}
+      <View style={[styles.card, { backgroundColor: colors.surface }]}>
+        <Text style={[styles.cardTitle, { color: colors.textPrimary }]}>📋 Resumen médico del día</Text>
+        <Text style={[styles.cardText, { color: colors.textSecondary }]}>
           {actividadesCompletadas 
             ? "¡Excelente trabajo! No tienes tareas médicas pendientes por hoy." 
             : "Tienes actividades y dosis de medicamentos pendientes para hoy."}
         </Text>
 
-        {/* Botón interactivo para simular el cambio en el flujo de la app */}
         {!actividadesCompletadas && (
-          <TouchableOpacity style={styles.actionButton} onPress={handleCompletarDia}>
+          <TouchableOpacity style={[styles.actionButton, { backgroundColor: colors.primary }]} onPress={handleCompletarDia}>
             <Text style={styles.actionButtonText}>✓ Completar Tareas de Hoy</Text>
           </TouchableOpacity>
         )}
       </View>
 
-      {/* ── Tarjeta 2: Estado de salud ────────────────────────────────── */}
-      <View style={styles.card}>
-        <Text style={styles.cardTitle}>💚 Estado de salud</Text>
-        <Text style={styles.cardText}>
+      {/* Tarjeta 2 */}
+      <View style={[styles.card, { backgroundColor: colors.surface }]}>
+        <Text style={[styles.cardTitle, { color: colors.textPrimary }]}>💚 Estado de salud</Text>
+        <Text style={[styles.cardText, { color: colors.textSecondary }]}>
           Tratamiento activo. Todo en orden con tus últimas lecturas de presión y temperatura.
         </Text>
       </View>
 
-      {/* ── Tarjeta 3: Recordatorio de Tratamiento ────────────────────── */}
-      <View style={styles.card}>
-        <Text style={styles.cardTitle}>💊 Alerta de tratamiento</Text>
-        <Text style={styles.cardText}>
+      {/* Tarjeta 3 */}
+      <View style={[styles.card, { backgroundColor: colors.surface }]}>
+        <Text style={[styles.cardTitle, { color: colors.textPrimary }]}>💊 Alerta de tratamiento</Text>
+        <Text style={[styles.cardText, { color: colors.textSecondary }]}>
           Recuerda mantener al día tus registros en la pestaña de Control Médico para evitar alertas.
         </Text>
       </View>
 
-      {/* ── Tarjeta 4: Acceso rápido ──────────────────────────────────── */}
-      <View style={[styles.card, styles.cardHighlight]}>
+      {/* Tarjeta 4 (Highlight mantiene su color de marca fuerte) */}
+      <View style={[styles.card, styles.cardHighlight, { backgroundColor: colors.primary }]}>
         <Text style={styles.cardTitleLight}>⚡ Acceso rápido</Text>
         <Text style={styles.cardTextLight}>
           Usa las pestañas inferiores para navegar entre secciones.
@@ -66,34 +62,25 @@ export default function HomeScreen() {
   );
 }
 
-// ─── Estilos (Manteniendo el 100% de tus estilos originales) ───────────────
 const styles = StyleSheet.create({
   screen: {
     flex: 1,
-    backgroundColor: "#F8FAFC",
   },
-
   content: {
     padding: 24,
     paddingTop: 52,
     paddingBottom: 32,
   },
-
   greeting: {
     fontSize: 28,
     fontWeight: "700",
-    color: "#0F172A",
     marginBottom: 4,
   },
-
   subtitle: {
     fontSize: 14,
-    color: "#64748B",
     marginBottom: 28,
   },
-
   card: {
-    backgroundColor: "#FFFFFF",
     borderRadius: 16,
     padding: 18,
     marginBottom: 14,
@@ -103,46 +90,34 @@ const styles = StyleSheet.create({
     shadowRadius: 6,
     elevation: 3,
   },
-
   cardTitle: {
     fontSize: 15,
     fontWeight: "600",
-    color: "#0F172A",
     marginBottom: 6,
   },
-
   cardText: {
     fontSize: 13,
-    color: "#64748B",
     lineHeight: 20,
   },
-
   cardHighlight: {
-    backgroundColor: "#0284C7",
   },
-
   cardTitleLight: {
     fontSize: 15,
     fontWeight: "600",
     color: "#FFFFFF",
     marginBottom: 6,
   },
-
   cardTextLight: {
     fontSize: 13,
     color: "#BAE6FD",
     lineHeight: 20,
   },
-
-  // Estilo del botón interactivo para el nivel universitario
   actionButton: {
     marginTop: 12,
-    backgroundColor: "#0284C7",
     paddingVertical: 8,
     borderRadius: 8,
     alignItems: "center",
   },
-
   actionButtonText: {
     color: "#FFFFFF",
     fontSize: 13,

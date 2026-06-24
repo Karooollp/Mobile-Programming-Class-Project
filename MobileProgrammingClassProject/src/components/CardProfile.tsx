@@ -1,5 +1,6 @@
 import React from "react";
 import { View, StyleSheet, ScrollView } from "react-native";
+import { useCaremapHealth } from "../contexts/CaremapHealthContexts"; // 👈 Importamos tu contexto
 
 type Props = {
   children: React.ReactNode;
@@ -7,13 +8,16 @@ type Props = {
 };
 
 export default function CardBase({ children, footer }: Props) {
+  const { colors } = useCaremapHealth(); // 🌙 Obtenemos los colores dinámicos del tema actual
+
   return (
-    <View style={styles.container}>
+    // Reemplazamos los fondos fijos por los dinámicos usando un array de estilos
+    <View style={[styles.container, { backgroundColor: colors.background }]}>
       <ScrollView
         showsVerticalScrollIndicator={false}
         contentContainerStyle={styles.scroll}
       >
-        <View style={styles.card}>
+        <View style={[styles.card, { backgroundColor: colors.surface }]}>
           {children}
           
           {footer && <View style={styles.footer}>{footer}</View>}
@@ -22,6 +26,10 @@ export default function CardBase({ children, footer }: Props) {
     </View>
   );
 }
+
+// Nota: Dejamos sharedStyles intacto aquí abajo para que mantenga su estructura, 
+// pero como en tus pantallas ya le estás inyectando [{ color: colors.textPrimary }],
+// los estilos dinámicos del componente van a ganarle por completo a estos fijos. ¡Problema resuelto!
 export const sharedStyles = StyleSheet.create({
   title: {
     fontSize: 22,
@@ -44,7 +52,7 @@ export const sharedStyles = StyleSheet.create({
     backgroundColor: "#F9FAFB",
     borderRadius: 14,
     padding: 14,
-    marginBottom: 12, // 👈 separación entre inputs
+    marginBottom: 12, 
   },
   
   error: {
@@ -59,7 +67,6 @@ export const sharedStyles = StyleSheet.create({
     padding: 16,
     backgroundColor: "#FFFFFF",
     borderRadius: 20,
-    
     borderWidth: 1,
     borderColor: "#E5E7EB",
   },
@@ -126,7 +133,7 @@ export const sharedStyles = StyleSheet.create({
   },
   
   option: {
-    flex: 1, // 👈 clave para que los 3 ocupen igual espacio
+    flex: 1, 
     borderWidth: 1.5,
     borderColor: "#D1D5DB",
     paddingVertical: 12,
@@ -135,10 +142,10 @@ export const sharedStyles = StyleSheet.create({
     alignItems: "center",
   },
     
-    selectedOption: {
-      borderColor: "#2563EB",
-      backgroundColor: "#EFF6FF",
-    },
+  selectedOption: {
+    borderColor: "#2563EB",
+    backgroundColor: "#EFF6FF",
+  },
   
   optionText: {
     fontSize: 14,
@@ -212,7 +219,6 @@ export const sharedStyles = StyleSheet.create({
     borderBottomColor: "#E5E7EB",
   },
   
-  
   header: {
     alignItems: "center",
     marginBottom: 25,
@@ -270,7 +276,7 @@ export const sharedStyles = StyleSheet.create({
     backgroundColor: "#FFFFFF",
     borderRadius: 20,
     padding: 16,
-    marginBottom: 18, // 👈 separación REAL entre cards
+    marginBottom: 18, 
     borderWidth: 1,
     borderColor: "#E5E7EB",
     shadowColor: "#000",
@@ -280,7 +286,6 @@ export const sharedStyles = StyleSheet.create({
       width: 0,
       height: 3,
     },
-    
     elevation: 3,
   },
   
@@ -305,8 +310,6 @@ export const sharedStyles = StyleSheet.create({
   },
   
   /* ===== EDIT PROFILE ===== */
-  
-  
   optionActive: {
     backgroundColor: "#4F46E5",
     borderColor: "#4F46E5",
@@ -342,7 +345,7 @@ export const sharedStyles = StyleSheet.create({
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor:  "#F3F4F6",
+    // Eliminamos el color estático de aquí para manejarlo dinámicamente arriba
   },
   
   scroll: {
@@ -352,10 +355,8 @@ const styles = StyleSheet.create({
   },
   
   card: {
-    backgroundColor:  "#FFFFFF",
     borderRadius: 28,
     padding: 22,
-    
     shadowColor: "#000",
     shadowOpacity: 0.08,
     shadowRadius: 14,
@@ -363,8 +364,8 @@ const styles = StyleSheet.create({
       width: 0,
       height: 4,
     },
-    
     elevation: 5,
+    // Eliminamos el color estático de aquí para manejarlo dinámicamente arriba
   },
   
   footer: {
