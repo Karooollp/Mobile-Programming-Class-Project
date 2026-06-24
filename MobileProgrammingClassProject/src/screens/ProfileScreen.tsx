@@ -1,13 +1,36 @@
 import React from "react";
-import { Text, View, Image, StyleSheet } from "react-native";
-import { useCaremapHealth } from "../contexts/CaremapHealthContexts";
+import { Text, View, Image, TouchableOpacity, Linking } from "react-native";
+
+// 📦 Redux Hooks
+import { useAppSelector, useAppDispatch } from "../store/hooks";
+// NOTA: Si tu compañero creó una acción para cambiar el tema, impórtala aquí. Ejemplo:
+// import { toggleTheme } from "../store/slices/themeSlice";
+
 import CardProfile, { sharedStyles } from "../components/CardProfile";
 import CustomButton from "../components/CustomButton";
 
 export default function ProfileScreen({ navigation }: any) {
-  // 🌟 Extraemos profile, isDarkMode y toggleTheme desde tu contexto
-  const { profile, isDarkMode, toggleTheme } = useCaremapHealth();
+  const dispatch = useAppDispatch();
   
+  // 🌟 Extraemos los datos del perfil y del tema desde Redux
+  const profile = useAppSelector(state => state.userProfile.data);
+  const isDarkMode = useAppSelector((state: any) => state.theme?.isDarkMode || false);
+
+  // Función para manejar el cambio de tema mediante Redux si existe la acción
+  const handleToggleTheme = () => {
+    // dispatch(toggleTheme()); 
+    // Por ahora lo dejamos listo por si ocupan disparar la acción de Redux :3
+    console.log("Cambiando tema global desde Redux... 7u7");
+  };
+
+  if (!profile) {
+    return (
+      <View style={{ flex: 1, justifyContent: "center", alignItems: "center" }}>
+        <Text>Cargando perfil...</Text>
+      </View>
+    );
+  }
+
   return (
     <CardProfile
       footer={
@@ -16,7 +39,7 @@ export default function ProfileScreen({ navigation }: any) {
           <CustomButton
             title={isDarkMode ? "Cambiar a Modo Claro ☀️" : "Cambiar a Modo Oscuro 🌙"}
             variant="secondary"
-            onPress={toggleTheme}
+            onPress={handleToggleTheme}
           />
 
           <CustomButton
@@ -111,6 +134,33 @@ export default function ProfileScreen({ navigation }: any) {
             <Text style={sharedStyles.fieldValue}>
               {profile.bloodType ?? "-"}
             </Text>
+          </View>
+          
+          <View style={sharedStyles.fieldCard}>
+            <Text style={sharedStyles.fieldLabel}>
+              Acta Medica
+            </Text>
+            
+            {profile.birthCertificateUrl ? (
+              <TouchableOpacity
+                onPress={() =>
+                  Linking.openURL(profile.birthCertificateUrl!)
+                }
+              >
+                <Text
+                  style={[
+                    sharedStyles.fieldValue,
+                    { color: "blue" },
+                  ]}
+                >
+                  Ver documento
+                </Text>
+              </TouchableOpacity>
+            ) : (
+              <Text style={sharedStyles.fieldValue}>
+                No hay documento
+              </Text>
+            )}
           </View>
         </View>
       </View>

@@ -4,11 +4,27 @@ import CustomButton from "../components/CustomButton";
 import CustomInput from "../components/CustomInput";
 import LoginAndRegisterCard from "../components/LoginAndRegisterCard";
 import { Supabase } from "../lib/Supabase";
+<<<<<<< HEAD
 import { useCaremapHealth } from "../contexts/CaremapHealthContexts";
 import { validateText, validateEmail, validatePassword } from "../utils/validators/profileValidator";
 
 export default function RegisterScreen({ navigation }: any) {
   const { updateProfile, colors } = useCaremapHealth();
+=======
+
+import {
+  validateText,
+  validateEmail,
+  validatePassword,
+} from "../utils/validators/profileValidator";
+import {useAppDispatch} from "../store/hooks";
+import { setProfile } from "../store/slices/userProfileSlice";
+import * as WebBrowser from "expo-web-browser";
+
+export default function RegisterScreen({ navigation }: any) {
+  const dispatch = useAppDispatch();
+
+>>>>>>> 500988452e3295387db84be8df0c74797b5e2906
   
   const [firstName, setFirstName] = useState("");
   const [lastName, setLastName] = useState("");
@@ -70,18 +86,47 @@ export default function RegisterScreen({ navigation }: any) {
     if (hasErrors) return Alert.alert("Error", "Corrige los campos marcados");
     
     try {
+<<<<<<< HEAD
       const { data, error } = await Supabase.auth.signUp({ email, password });
       if (error) return Alert.alert("Error", error.message);
       
+=======
+      const { data, error } = await Supabase.auth.signUp({
+        email,
+        password,
+      });
+      if (error) {
+        Alert.alert("Error", error.message);
+        return;
+      }
+>>>>>>> 500988452e3295387db84be8df0c74797b5e2906
       const userId = data.user?.id;
       if (userId) {
         const { error: profileError } = await Supabase
           .from("users")
           .insert([{ user_id: userId, first_name: firstName, last_name: lastName, email: email, status: "active" }]);
         
+<<<<<<< HEAD
         if (profileError) return Alert.alert("Error perfil", profileError.message);
         
         updateProfile({ user_id: userId, first_Name: firstName, last_Name: lastName, email, status: "active", profileCompleted: false });
+=======
+        if (profileError) {
+          Alert.alert("Error perfil", profileError.message);
+          return;
+        }
+        // REDUX (REEMPLAZA EL CONTEXT)
+        dispatch(
+          setProfile({
+            user_id: userId,
+            first_Name: firstName,
+            last_Name: lastName,
+            email,
+            status: "active",
+            profileCompleted: false,
+          })
+        );
+>>>>>>> 500988452e3295387db84be8df0c74797b5e2906
       }
       
       Alert.alert("Éxito", "Usuario registrado correctamente");
@@ -90,6 +135,98 @@ export default function RegisterScreen({ navigation }: any) {
       console.log(err);
       Alert.alert("Error", "Ocurrió un error inesperado");
     }
+  };
+  
+  
+  const handleGoogleRegister = async () => {
+    const redirectUrl = "com.misap.caremaphealth://auth/callback";
+    
+    const { data, error } = await Supabase.auth.signInWithOAuth({
+      provider: "google",
+      options: {
+        redirectTo: redirectUrl,
+      },
+    });
+    
+    if (error) {
+      Alert.alert("Error", error.message);
+      return;
+    }
+    
+    const result = await WebBrowser.openAuthSessionAsync(
+      data.url,
+      redirectUrl
+    );
+    
+    if (result.type !== "success") return;
+    
+    const params = new URLSearchParams(result.url.split("#")[1]);
+    
+    const access_token = params.get("access_token");
+    const refresh_token = params.get("refresh_token");
+    
+    if (!access_token || !refresh_token) {
+      Alert.alert("Error", "No se pudo obtener la sesión");
+      return;
+    }
+    
+    const { data: sessionData, error: sessionError } =
+      await Supabase.auth.setSession({
+        access_token,
+        refresh_token,
+      });
+    
+    if (sessionError) {
+      Alert.alert("Error", sessionError.message);
+      return;
+    }
+    
+    const user = sessionData.user;
+    
+    if (!user) {
+      Alert.alert("Error", "No se obtuvo el usuario");
+      return;
+    }
+    
+    // EXTRAER DATOS DE GOOGLE
+    const fullName = user.user_metadata?.full_name || "";
+    const firstName = fullName.split(" ")[0] || "";
+    const lastName = fullName.split(" ")[1] || "";
+    const email = user.email || "";
+    
+    // 🗄️ GUARDAR EN BD (igual que register normal)
+    const { error: profileError } = await Supabase
+      .from("users")
+      .upsert([
+        {
+          user_id: user.id,
+          first_name: firstName,
+          last_name: lastName,
+          email,
+          status: "active",
+        },
+      ]);
+    
+    if (profileError) {
+      Alert.alert("Error perfil", profileError.message);
+      return;
+    }
+    
+    // REDUX PROFILE (MISMO FLUJO QUE REGISTER NORMAL)
+    dispatch(
+      setProfile({
+        user_id: user.id,
+        first_Name: firstName,
+        last_Name: lastName,
+        email,
+        status: "active",
+        profileCompleted: false,
+      })
+    );
+    
+    Alert.alert("Éxito", "Usuario registrado correctamente");
+    
+    navigation.navigate("EditProfile");
   };
   
   return (
@@ -112,6 +249,18 @@ export default function RegisterScreen({ navigation }: any) {
       <View style={styles.buttonContainer}>
         <CustomButton title="Registrarse" onPress={handleRegister} />
       </View>
+<<<<<<< HEAD
+=======
+      
+      <View style={styles.buttonContainer}>
+        <CustomButton
+          title={"Continuar con Google"}
+          variant="primary"
+          onPress={handleGoogleRegister}
+        />
+      </View>
+      
+>>>>>>> 500988452e3295387db84be8df0c74797b5e2906
     </LoginAndRegisterCard>
   );
 }
