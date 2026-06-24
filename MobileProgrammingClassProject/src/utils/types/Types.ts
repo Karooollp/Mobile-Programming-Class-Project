@@ -1,18 +1,16 @@
 // Representa variqbles como edad, genero,enfermedad y observaciones
 export type UserProfile = {
   user_id: string;
-  first_Name: string;
-  last_Name: string;
-  age: number | null;
-  gender: string | null;
-  birthDate: string | null;
-  photoUrl: string | null;
-  phone: string | null;
+  first_name: string;
+  last_name: string;
   email: string;
-  address: string | null;
-  bloodType: string | null;
-  emergencyContact: string | null;
-  status: 'active' | 'inactive' | 'deleted' | 'banned';
-  createdAt: string;
-  profileCompleted: boolean;
+  
+  age?: number;
+  phone?: string;
+  address?: string;
+  gender?: string;
+  blood_type?: string;
+  emergency_contact?: string;
+  birth_date?: string | null;
+  photo_url?: string | null;
 };

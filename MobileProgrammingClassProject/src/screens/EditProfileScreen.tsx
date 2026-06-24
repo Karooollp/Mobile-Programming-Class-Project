@@ -1,21 +1,67 @@
-import React, { useState } from "react";
-import { View, Text, TouchableOpacity, Image, Alert, StyleSheet, ScrollView } from "react-native";
+import React, {useEffect, useState} from "react";
+import {
+  View,
+  Text,
+  TouchableOpacity,
+  Image,
+  Alert,
+  StyleSheet,
+  ScrollView, ActivityIndicator, Linking,
+} from "react-native";
+
 import * as ImagePicker from "expo-image-picker";
 import DateTimePicker from "@react-native-community/datetimepicker";
+
 import CustomInput from "../components/CustomInput";
 import { Supabase } from "../lib/Supabase";
-import { useCaremapHealth } from "../contexts/CaremapHealthContexts";
-import { validateAge, validatePhone, validateText, validateGender, validateBloodType, GENDERS, BLOOD_TYPES } from "../utils/validators/profileValidator";
+
+import {
+  validateAge,
+  validatePhone,
+  validateText,
+  validateGender,
+  validateBloodType,
+  GENDERS,
+  BLOOD_TYPES,
+} from "../utils/validators/profileValidator";
+
 import CardProfile, { sharedStyles } from "../components/CardProfile";
 
-export default function EditProfileScreen({ navigation }: any) {
-  const { profile, updateProfile, colors } = useCaremapHealth(); // 🌙 Usamos colors
+import { updateProfile } from "../store/slices/userProfileSlice";
+import { useAppDispatch, useAppSelector } from "../store/hooks";
+
+import {
+  uploadImage,
+  uploadDocument,
+} from "../services/storageService";
+
+import * as DocumentPicker from "expo-document-picker";
+import CustomButton from "../components/CustomButton";
+import ProfilePhotoPicker from "../components/PhotoPicker";
+import PhotoPicker from "../components/PhotoPicker";
+export default function EditProfileScreen({navigation}:any) {
+  
+  const dispatch = useAppDispatch();
+  
+  // Redux source of truth
+  const profile = useAppSelector((state) => state.userProfile.data);
+
+  
   const [showBloodTypes, setShowBloodTypes] = useState(false);
   const [showDatePicker, setShowDatePicker] = useState(false);
   
-  const [firstName, setFirst_Name] = useState(profile.first_Name ?? "");
-  const [lastName, setLast_Name] = useState(profile.last_Name ?? "");
+  if (!profile) {
+    return (
+      <View style={{ flex: 1, justifyContent: "center", alignItems: "center" }}>
+        <Text>Cargando perfil...</Text>
+      </View>
+    );
+  }
+  
+  const [firstName, setFirstName] = useState(profile.first_Name ?? "");
+  const [lastName, setLastName] = useState(profile.last_Name ?? "");
   const [email, setEmail] = useState(profile.email ?? "");
+  
   const [age, setAge] = useState(profile.age?.toString() ?? "");
   const [phone, setPhone] = useState(profile.phone ?? "");
   const [address, setAddress] = useState(profile.address ?? "");
@@ -23,126 +69,417 @@ export default function EditProfileScreen({ navigation }: any) {
   const [bloodType, setBloodType] = useState(profile.bloodType ?? "");
   const [emergency, setEmergency] = useState(profile.emergencyContact ?? "");
   const [photo, setPhoto] = useState(profile.photoUrl ?? null);
-  const [birthDate, setBirthDate] = useState<Date | null>(profile.birthDate ? new Date(profile.birthDate) : null);
   
-  const [errors, setErrors] = useState({ age: "", phone: "", address: "", emergency: "", gender: "", bloodType: "" });
+  const [tempPhoto, setTempPhoto] = useState<string | null>(null);
+  const [showPhotoPreview, setShowPhotoPreview] = useState(false);
+  const [birthDate, setBirthDate] = useState<Date | null>(
+    profile.birthDate ? new Date(profile.birthDate) : null
+  );
+  const [document, setDocument] =
+    useState<DocumentPicker.DocumentPickerAsset | null>(null);
+  const [loading, setLoading] =
+    useState(false);
+  
+  useEffect(() => {
+    if (!profile) return;
+    
+    setFirstName(profile.first_Name ?? "");
+    setLastName(profile.last_Name ?? "");
+    setEmail(profile.email ?? "");
+    
+    setAge(profile.age?.toString() ?? "");
+    setPhone(profile.phone ?? "");
+    setAddress(profile.address ?? "");
+    setGender(profile.gender ?? "");
+    setBloodType(profile.bloodType ?? "");
+    setEmergency(profile.emergencyContact ?? "");
+    setPhoto(profile.photoUrl ?? null);
+    
+    setBirthDate(
+      profile.birthDate ? new Date(profile.birthDate) : null
+    );
+  }, [profile]);
+  
+  const [errors, setErrors] = useState({
+    age: "",
+    phone: "",
+    address: "",
+    emergency: "",
+    gender: "",
+    bloodType: "",
+  });
   
   const handleBirthDateChange = (_: any, selectedDate?: Date) => {
     setShowDatePicker(false);
     if (selectedDate) setBirthDate(selectedDate);
   };
   
-  // Handlers omitidos por brevedad (mantienen tu lógica intacta)...
-  const handleAge = (v: string) => { setAge(v); setErrors(p => ({ ...p, age: validateAge(v) || "" })); };
-  const handlePhone = (v: string) => { setPhone(v); setErrors(p => ({ ...p, phone: validatePhone(v) || "" })); };
-  const handleAddress = (v: string) => { setAddress(v); setErrors(p => ({ ...p, address: validateText(v, "Dirección") || "" })); };
-  const handleEmergency = (v: string) => { setEmergency(v); setErrors(p => ({ ...p, emergency: validateText(v, "Contacto emergencia") || "" })); };
-  const handleGender = (v: string) => { setGender(v); setErrors(p => ({ ...p, gender: validateGender(v) || "" })); };
-  const handleBloodType = (v: string) => { setBloodType(v); setErrors(p => ({ ...p, bloodType: validateBloodType(v) || "" })); };
-
-  const pickImage = async () => {
-    const result = await ImagePicker.launchImageLibraryAsync({ mediaTypes: ImagePicker.MediaTypeOptions.Images, quality: 0.7 });
-    if (!result.canceled) setPhoto(result.assets[0].uri);
+  const handleAge = (value: string) => {
+    setAge(value);
+    setErrors((p) => ({ ...p, age: validateAge(value) || "" }));
+  };
+  
+  const handlePhone = (value: string) => {
+    setPhone(value);
+    setErrors((p) => ({ ...p, phone: validatePhone(value) || "" }));
+  };
+  
+  const handleAddress = (value: string) => {
+    setAddress(value);
+    setErrors((p) => ({ ...p, address: validateText(value, "Dirección") || "" }));
+  };
+  
+  const handleEmergency = (value: string) => {
+    setEmergency(value);
+    setErrors((p) => ({
+      ...p,
+      emergency: validateText(value, "Contacto emergencia") || "",
+    }));
+  };
+  
+  const handleGender = (value: string) => {
+    setGender(value);
+    setErrors((p) => ({ ...p, gender: validateGender(value) || "" }));
+  };
+  
+  const handleBloodType = (value: string) => {
+    setBloodType(value);
+    setErrors((p) => ({ ...p, bloodType: validateBloodType(value) || "" }));
+  };
+  
+  const pickDocument = async () => {
+    const result =
+      await DocumentPicker.getDocumentAsync({
+        copyToCacheDirectory: true,
+        multiple: false,
+      });
+    
+    if (!result.canceled) {
+      setDocument(result.assets[0]);
+    }
   };
   
   const handleSave = async () => {
-    const validations = { age: validateAge(age), phone: validatePhone(phone), address: validateText(address, "Dirección"), emergency: validateText(emergency, "Contacto emergencia"), gender: validateGender(gender), bloodType: validateBloodType(bloodType) };
-    setErrors({ age: validations.age || "", phone: validations.phone || "", address: validations.address || "", emergency: validations.emergency || "", gender: validations.gender || "", bloodType: validations.bloodType || "" });
+    const validations = {
+      age: validateAge(age),
+      phone: validatePhone(phone),
+      address: validateText(address, "Dirección"),
+      emergency: validateText(emergency, "Contacto emergencia"),
+      gender: validateGender(gender),
+      bloodType: validateBloodType(bloodType),
+    };
     
-    if (Object.values(validations).some(Boolean)) return Alert.alert("Error", "Corrige los campos marcados");
+    setErrors({
+      age: validations.age || "",
+      phone: validations.phone || "",
+      address: validations.address || "",
+      emergency: validations.emergency || "",
+      gender: validations.gender || "",
+      bloodType: validations.bloodType || "",
+    });
+    
+    const hasErrors = Object.values(validations).some(Boolean);
+    
+    if (hasErrors) {
+      return Alert.alert("Error", "Corrige los campos marcados");
+    }
     
     try {
-      const { data: { user } } = await Supabase.auth.getUser();
-      if (!user) return Alert.alert("Error", "Usuario no autenticado");
+      setLoading(true);
       
-      const updatedProfile = { ...profile, age: Number(age), phone, address, gender, bloodType, emergencyContact: emergency, photoUrl: photo, birthDate: birthDate ? birthDate.toISOString() : null, profileCompleted: true };
-      updateProfile(updatedProfile);
+      const {
+        data: { user },
+      } = await Supabase.auth.getUser();
       
-      const { error } = await Supabase.from("users").update({ age: Number(age), phone, address, gender, blood_type: bloodType, emergency_contact: emergency, photo_url: photo, birth_date: birthDate?.toISOString() }).eq("user_id", user.id);
-      if (error) return Alert.alert("Error Supabase", error.message);
+      
+      if (!user) {
+        return Alert.alert("Error", "Usuario no autenticado");
+      }
+      
+      
+      let imageUrl = profile.photoUrl;
+      let documentUrl = profile.birthCertificateUrl;
+      
+      if (photo?.startsWith("file")) {
+        imageUrl = await uploadImage(
+          user.id,
+          photo
+        );
+      }
+      
+      if (document) {
+        documentUrl = await uploadDocument(
+          user.id,
+          document
+        );
+      }
+      
+      const updatedProfile = {
+        ...profile,
+        first_Name: firstName,
+        last_Name: lastName,
+        email,
+        
+        age: Number(age),
+        phone,
+        address,
+        gender,
+        bloodType,
+        emergencyContact: emergency,
+        
+        photoUrl: imageUrl,
+        birthCertificateUrl: documentUrl,
+        
+        birthDate: birthDate
+          ? birthDate.toISOString()
+          : null,
+        
+        profileCompleted: true,
+      };
+      
+      dispatch(updateProfile(updatedProfile));
+      
+      const { error } = await Supabase
+        .from("users")
+        .update({
+          age: Number(age),
+          phone,
+          address,
+          gender,
+          blood_type: bloodType,
+          emergency_contact: emergency,
+          photo_url: imageUrl,
+          birth_certificate_url: documentUrl,
+          birth_date: birthDate?.toISOString(),
+        })
+        .eq("user_id", user.id);
+      
+      if (error) {
+        return Alert.alert("Error Supabase", error.message);
+      }
       
       Alert.alert("Éxito", "Perfil actualizado");
       navigation.navigate("Profile");
-    } catch (e) { Alert.alert("Error", "Ocurrió un error inesperado"); }
+    } catch (error) {
+      console.log(error);
+      Alert.alert(
+        "Error",
+        "Ocurrió un error inesperado"
+      );
+    } finally {
+      setLoading(false);
+    }
   };
   
   return (
-    <CardProfile>
+   
+      <CardProfile>
       <ScrollView showsVerticalScrollIndicator={false}>
+        
+        {/* FOTO */}
         <View style={sharedStyles.cardSection}>
-          <TouchableOpacity style={sharedStyles.photoContainer} onPress={pickImage}>
-            {photo ? <Image source={{ uri: photo }} style={sharedStyles.photo} /> : (
-              <View style={[sharedStyles.emptyPhoto, { backgroundColor: colors.border }]}>
-                <Text style={{ color: colors.textSecondary }}>Agregar foto</Text>
-              </View>
-            )}
-          </TouchableOpacity>
+          <PhotoPicker
+            value={photo}
+            onChange={setPhoto}
+            variant="profile"
+          />
         </View>
         
-        {/* Información Personal */}
+        {/* ===== SECCIÓN 1 ===== */}
         <View style={sharedStyles.cardSection}>
-          <Text style={[sharedStyles.sectionTitle, { color: colors.textPrimary }]}>Información Personal</Text>
-          <CustomInput value={firstName} onChange={setFirst_Name} placeholder="Nombre" />
-          <CustomInput value={lastName} onChange={setLast_Name} placeholder="Apellido" />
+          <Text style={sharedStyles.sectionTitle}>Información Personal</Text>
+          
+          <CustomInput value={firstName} onChange={setFirstName} placeholder="Nombre" />
+          <CustomInput value={lastName} onChange={setLastName} placeholder="Apellido" />
           <CustomInput type="email" value={email} onChange={setEmail} placeholder="Correo" />
         </View>
         
-        {/* Datos Generales */}
+        {/* ===== SECCIÓN 2 ===== */}
         <View style={sharedStyles.cardSection}>
-          <Text style={[sharedStyles.sectionTitle, { color: colors.textPrimary }]}>Datos Generales</Text>
+          <Text style={sharedStyles.sectionTitle}>Datos Generales</Text>
+          
           <CustomInput type="number" placeholder="Edad" value={age} onChange={handleAge} />
           {!!errors.age && <Text style={sharedStyles.error}>{errors.age}</Text>}
+          
           <CustomInput type="number" placeholder="Teléfono" value={phone} onChange={handlePhone} />
           {!!errors.phone && <Text style={sharedStyles.error}>{errors.phone}</Text>}
+          
           <CustomInput placeholder="Dirección" value={address} onChange={handleAddress} />
           {!!errors.address && <Text style={sharedStyles.error}>{errors.address}</Text>}
         </View>
         
-        {/* Nacimiento */}
+        {/* ===== FECHA ===== */}
         <View style={sharedStyles.cardSection}>
-          <Text style={[sharedStyles.sectionTitle, { color: colors.textPrimary }]}>Fecha de nacimiento</Text>
-          <TouchableOpacity style={[sharedStyles.inputBox, { backgroundColor: colors.background, borderColor: colors.border }]} onPress={() => setShowDatePicker(true)}>
-            <Text style={{ color: colors.textPrimary }}>{birthDate ? birthDate.toLocaleDateString() : "Seleccionar fecha"}</Text>
+          <Text style={sharedStyles.sectionTitle}>Fecha de nacimiento</Text>
+          
+          <TouchableOpacity
+            style={sharedStyles.inputBox}
+            onPress={() => setShowDatePicker(true)}
+          >
+            <Text>
+              {birthDate ? birthDate.toLocaleDateString() : "Seleccionar fecha"}
+            </Text>
           </TouchableOpacity>
-          {showDatePicker && <DateTimePicker value={birthDate || new Date()} mode="date" onChange={handleBirthDateChange} />}
+          
+          {showDatePicker && (
+            <DateTimePicker
+              value={birthDate || new Date()}
+              mode="date"
+              onChange={handleBirthDateChange}
+            />
+          )}
         </View>
         
-        {/* Datos Médicos */}
+        {/* ===== SECCIÓN 3 ===== */}
         <View style={sharedStyles.cardSection}>
-          <Text style={[sharedStyles.sectionTitle, { color: colors.textPrimary }]}>Datos Médicos</Text>
-          <Text style={{ color: colors.textSecondary, marginBottom: 8 }}>Género</Text>
+          <Text style={sharedStyles.sectionTitle}>Datos Médicos</Text>
+          
+          <Text style={sharedStyles.label}>Género</Text>
+          
           <View style={sharedStyles.optionWrap}>
             {GENDERS.map((item) => (
-              <TouchableOpacity key={item} onPress={() => handleGender(item)} style={[sharedStyles.option, { borderColor: colors.border }, gender === item && { backgroundColor: colors.primary }]}>
-                <Text style={[ { color: colors.textPrimary }, gender === item && { color: '#fff', fontWeight: 'bold' }]}>{item}</Text>
+              <TouchableOpacity
+                key={item}
+                onPress={() => handleGender(item)}
+                style={[
+                  sharedStyles.option,
+                  gender === item && sharedStyles.optionActive,
+                ]}
+              >
+                <Text
+                  style={[
+                    sharedStyles.optionText,
+                    gender === item && sharedStyles.optionTextActive,
+                  ]}
+                >
+                  {item}
+                </Text>
               </TouchableOpacity>
             ))}
           </View>
           
-          <Text style={{ color: colors.textSecondary, marginTop: 14, marginBottom: 8 }}>Tipo de Sangre</Text>
-          <TouchableOpacity style={[sharedStyles.dropdownButton, { backgroundColor: colors.surface, borderColor: colors.border }]} onPress={() => setShowBloodTypes(!showBloodTypes)}>
-            <Text style={{ color: colors.textPrimary }}>{bloodType || "Selecciona tipo de sangre"}</Text>
-            <Text style={{ color: colors.textSecondary }}>{showBloodTypes ? "▲" : "▼"}</Text>
+          {!!errors.gender && (
+            <Text style={sharedStyles.error}>{errors.gender}</Text>
+          )}
+          
+          <Text style={sharedStyles.label}>Tipo de Sangre</Text>
+          
+          <TouchableOpacity
+            style={sharedStyles.dropdownButton}
+            onPress={() => setShowBloodTypes(!showBloodTypes)}
+          >
+            <Text style={sharedStyles.dropdownText}>
+              {bloodType || "Selecciona tipo de sangre"}
+            </Text>
+            <Text style={sharedStyles.arrow}>{showBloodTypes ? "▲" : "▼"}</Text>
           </TouchableOpacity>
           
           {showBloodTypes && (
-            <View style={[sharedStyles.dropdownList, { backgroundColor: colors.surface, borderColor: colors.border }]}>
-              {BLOOD_TYPES.map((item) => (
-                <TouchableOpacity key={item} style={[sharedStyles.dropdownItem, { borderBottomColor: colors.border }]} onPress={() => { handleBloodType(item); setShowBloodTypes(false); }}>
-                  <Text style={[{ color: colors.textPrimary }, bloodType === item && { color: colors.primary, fontWeight: 'bold' }]}>{item}</Text>
+            <View style={sharedStyles.dropdownList}>
+              {BLOOD_TYPES.map((item, index) => (
+                <TouchableOpacity
+                  key={item}
+                  style={[
+                    sharedStyles.dropdownItem,
+                    index !== BLOOD_TYPES.length - 1 &&
+                    sharedStyles.dropdownItemBorder,
+                  ]}
+                  onPress={() => {
+                    handleBloodType(item);
+                    setShowBloodTypes(false);
+                  }}
+                >
+                  <Text
+                    style={[
+                      sharedStyles.dropdownItemText,
+                      bloodType === item && sharedStyles.selectedDropdownText,
+                    ]}
+                  >
+                    {item}
+                  </Text>
                 </TouchableOpacity>
               ))}
             </View>
           )}
           
-          <CustomInput type="number" placeholder="Contacto de emergencia" value={emergency} onChange={handleEmergency} />
-          {!!errors.emergency && <Text style={sharedStyles.error}>{errors.emergency}</Text>}
+          <Text style={sharedStyles.label}>Contacto de Emergencia</Text>
+          <CustomInput
+            type="number"
+            placeholder="Contacto de emergencia"
+            value={emergency}
+            onChange={handleEmergency}
+          />
+          
+          {!!errors.emergency && (
+            <Text style={sharedStyles.error}>{errors.emergency}</Text>
+          )}
+          
+          
+          
+          <Text style={sharedStyles.label}>
+            Certificado médico
+          </Text>
+          
+          <TouchableOpacity
+            style={sharedStyles.dropdownButton}
+            onPress={pickDocument}
+          >
+            <Text style={sharedStyles.dropdownText}>
+              {document?.name || profile.birthCertificateUrl
+                ? "Documento seleccionado / existente"
+                : "Seleccionar Certificado"}
+            </Text>
+          </TouchableOpacity>
+          
+          {/* archivo nuevo seleccionado */}
+          {document && (
+            <Text style={{ marginTop: 5 }}>
+              📄 Nuevo: {document.name}
+            </Text>
+          )}
+          
+          {/* archivo ya guardado en Supabase */}
+          {!document && profile.birthCertificateUrl && (
+            <TouchableOpacity
+              onPress={() => {
+                if (profile?.birthCertificateUrl) {
+                  Linking.openURL(profile.birthCertificateUrl);
+                } else {
+                  Alert.alert("No hay documento");
+                }
+              }}
+            >
+              <Text style={{ color: "blue", marginTop: 5 }}>
+                📎 Ver documento actual
+              </Text>
+            </TouchableOpacity>
+          )}
+          
+          
         </View>
         
-        <TouchableOpacity style={[sharedStyles.button, { backgroundColor: colors.primary }]} onPress={handleSave}>
-          <Text style={sharedStyles.buttonText}>Guardar Perfil</Text>
-        </TouchableOpacity>
+        {/* BOTÓN */}
+        {
+          loading ? (
+            <ActivityIndicator
+              size="large"
+            />
+          ) : (
+            <TouchableOpacity
+              style={sharedStyles.button}
+              onPress={handleSave}
+            >
+              <Text style={sharedStyles.buttonText}>
+                Guardar Perfil
+              </Text>
+            </TouchableOpacity>
+          )
+        }
+      
       </ScrollView>
     </CardProfile>
+
   );
 }
+
+

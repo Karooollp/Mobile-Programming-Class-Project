@@ -6,6 +6,7 @@ import EditProfileScreen from "../screens/EditProfileScreen";
 import { View, Text } from "react-native"; 
 import TabNavigator from "./TabNavigator";
 
+
 function MainTabsPlaceholder() {
   return (
     <View style={{ flex: 1, justifyContent: "center", alignItems: "center", backgroundColor: "#F8FAFC" }}>
@@ -28,16 +29,23 @@ export type RootStackParamList={
     EditProfile: undefined;
 }
 
-const Stack = createNativeStackNavigator<RootStackParamList>();
+const Stack = createNativeStackNavigator <RootStackParamList>();
 
 export default function StackNavigator (){
-    return (
+    return(
         <Stack.Navigator initialRouteName="Login" screenOptions={{headerShown: false}}>
             <Stack.Screen name="Login" component={LoginScreen}/>
-            <Stack.Screen name="Register" component={RegisterScreen}/>
-            <Stack.Screen name="UserTabs" component={TabNavigator} options={{ headerShown: false }}/>
-            <Stack.Screen name="Profile" component={ProfileScreen}/>
-            <Stack.Screen name="EditProfile" component={EditProfileScreen}/>
+            <Stack.Screen name="Register" component={RegisterScreen} />
+            
+            {/*Añadimos UserTabs apuntando al placeholder y bloqueando el retroceso  */}
+            <Stack.Screen
+            name="UserTabs"
+            component={TabNavigator} 
+            options={{ headerShown: false }}
+            />
+
+            <Stack.Screen name="Profile" component={ProfileScreen} />
+            <Stack.Screen name="EditProfile" component={EditProfileScreen} />
         </Stack.Navigator>
-    );
+    )
 }
