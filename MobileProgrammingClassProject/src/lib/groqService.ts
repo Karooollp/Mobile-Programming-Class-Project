@@ -1,4 +1,5 @@
-const API_KEY = "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"; 
+// 🌐 Leemos la API KEY de forma segura desde las variables de entorno de Expo
+const API_KEY = process.env.EXPO_PUBLIC_GROQ_API_KEY; 
 const API_URL = "https://api.groq.com/openai/v1/chat/completions";
 
 /**
@@ -8,30 +9,36 @@ const API_URL = "https://api.groq.com/openai/v1/chat/completions";
  */
 export async function preguntarAGroq(mensajeDelUsuario: string, imagenBase64?: string): Promise<string> {
   try {
+    // 🛑 Validación de seguridad por si acaso se olvida configurar el .env
+    if (!API_KEY) {
+      console.error("❌ Error: EXPO_PUBLIC_GROQ_API_KEY no está definida en el archivo .env");
+      return "¡Ups! Falta configurar las llaves de seguridad de la IA. Avisa al administrador. :c";
+    }
+
     const systemInstruction = "Eres el asistente virtual médico inteligente de Caremap Health. Responde siempre de manera muy amable, linda, empática y clara. Tu enfoque es la salud preventiva, dar consejos de bienestar y recordar que ante emergencias deben ir al médico. Si te envían una foto, analízala con cuidado bajo este mismo enfoque cariñoso.";
 
     let modeloAUsar = "llama-3.1-8b-instant"; 
     let contenidoMensaje: any = mensajeDelUsuario; 
 
     if (imagenBase64) {
-  // 🔄 Limpiamos cualquier salto de línea o espacio raro que meta Expo
-  const base64Limpio = imagenBase64.replace(/[\n\r]/g, "").trim();
+      // 🔄 Limpiamos cualquier salto de línea o espacio raro que meta Expo
+      const base64Limpio = imagenBase64.replace(/[\n\r]/g, "").trim();
 
-  modeloAUsar = "meta-llama/llama-4-scout-17b-16e-instruct"; 
-  contenidoMensaje = [
-    { 
-      type: "text", 
-      text: mensajeDelUsuario || "Analiza esta imagen relacionada con la salud o bienestar, por favor. :3" 
-    },
-    {
-      type: "image_url",
-      image_url: {
-        // 🌟 Usamos el string ya purificado aquí
-        url: `data:image/jpeg;base64,${base64Limpio}` 
-      }
+      modeloAUsar = "meta-llama/llama-4-scout-17b-16e-instruct"; 
+      contenidoMensaje = [
+        { 
+          type: "text", 
+          text: mensajeDelUsuario || "Analiza esta imagen relacionada con la salud o bienestar, por favor. :3" 
+        },
+        {
+          type: "image_url",
+          image_url: {
+            // 🌟 Usamos el string ya purificado aquí
+            url: `data:image/jpeg;base64,${base64Limpio}` 
+          }
+        }
+      ];
     }
-  ];
-}
 
     const response = await fetch(API_URL, {
       method: "POST",

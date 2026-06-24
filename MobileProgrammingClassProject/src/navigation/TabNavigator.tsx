@@ -6,7 +6,7 @@ import { Ionicons } from "@expo/vector-icons";
 import HomeScreen from "../screens/HomeScreen";
 import DashboardScreen from "../screens/DashboardScreen";
 import ProfileScreen from "../screens/ProfileScreen";
-import ChatScreen from "../screens/ChatScreen"; // 👈 ¡Importamos tu chat real aquí, bb! :3
+import ChatScreen from "../screens/ChatScreen";
 
 // Creamos la instancia del Tab Navigator 
 const Tab = createBottomTabNavigator();
