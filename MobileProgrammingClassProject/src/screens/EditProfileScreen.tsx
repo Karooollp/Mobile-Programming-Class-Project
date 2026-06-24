@@ -1,51 +1,64 @@
 import React, { useEffect, useState } from "react";
-import { View, Text, TouchableOpacity, Image, Alert, StyleSheet, ScrollView, ActivityIndicator, Linking } from "react-native";
-import * as ImagePicker from "expo-image-picker";
+import { View, Text, TouchableOpacity, Alert, ActivityIndicator, ScrollView } from "react-native";
 import DateTimePicker from "@react-native-community/datetimepicker";
 import CustomInput from "../components/CustomInput";
 import { Supabase } from "../lib/Supabase";
-import { useCaremapHealth } from "../contexts/CaremapHealthContexts"; // ✅ Todo desde el contexto
+import { useCaremapHealth } from "../contexts/CaremapHealthContexts"; // ✅ Maneja solo UI ahora
 import { validateAge, validatePhone, validateText, validateGender, validateBloodType, GENDERS, BLOOD_TYPES } from "../utils/validators/profileValidator";
 import CardProfile, { useSharedStyles } from "../components/CardProfile";
 import { uploadImage, uploadDocument } from "../services/storageService";
 import * as DocumentPicker from "expo-document-picker";
-import CustomButton from "../components/CustomButton";
 import PhotoPicker from "../components/PhotoPicker";
 
+// 📦 Importes de Redux para manejar los datos
+import { useAppDispatch, useAppSelector } from "../store/hooks";
+import { updateProfile as updateProfileRedux } from "../store/slices/userProfileSlice";
+
 export default function EditProfileScreen({ navigation }: any) {
-  const sharedStyles = useSharedStyles(); // 👈 línea nueva
-  const { colors, profile, updateProfile } = useCaremapHealth(); // ✅ Sin Redux
+  const sharedStyles = useSharedStyles();
+  const dispatch = useAppDispatch();
+  
+  // 🎨 El contexto ahora solo nos da los colores lindos
+  const { colors } = useCaremapHealth(); 
+  
+  // 📦 Traemos los datos desde Redux
+  const profile = useAppSelector((state) => state.userProfile.data);
 
   const [showBloodTypes, setShowBloodTypes] = useState(false);
   const [showDatePicker, setShowDatePicker] = useState(false);
-  const [firstName, setFirstName] = useState(profile.first_name ?? "");
-  const [lastName, setLastName] = useState(profile.last_name ?? "");
-  const [email, setEmail] = useState(profile.email ?? "");
-  const [age, setAge] = useState(profile.age?.toString() ?? "");
-  const [phone, setPhone] = useState(profile.phone ?? "");
-  const [address, setAddress] = useState(profile.address ?? "");
-  const [gender, setGender] = useState(profile.gender ?? "");
-  const [bloodType, setBloodType] = useState(profile.blood_type ?? "");
-  const [emergency, setEmergency] = useState(profile.emergency_contact ?? "");
-  const [photo, setPhoto] = useState<string | null>(profile.photo_url ?? null);
-  const [birthDate, setBirthDate] = useState<Date | null>(profile.birth_date ? new Date(profile.birth_date) : null);
+  
+  // 📋 Inicializamos estados vacíos o con lo que tenga Redux si existe
+  const [firstName, setFirstName] = useState(profile?.first_Name ?? "");
+  const [lastName, setLastName] = useState(profile?.last_Name ?? "");
+  const [email, setEmail] = useState(profile?.email ?? "");
+  const [age, setAge] = useState(profile?.age?.toString() ?? "");
+  const [phone, setPhone] = useState(profile?.phone ?? "");
+  const [address, setAddress] = useState(profile?.address ?? "");
+  const [gender, setGender] = useState(profile?.gender ?? "");
+  const [bloodType, setBloodType] = useState(profile?.bloodType ?? "");
+  const [emergency, setEmergency] = useState(profile?.emergencyContact ?? "");
+  const [photo, setPhoto] = useState<string | null>(profile?.photoUrl ?? null);
+  const [birthDate, setBirthDate] = useState<Date | null>(profile?.birthDate ? new Date(profile.birthDate) : null);
   const [document, setDocument] = useState<DocumentPicker.DocumentPickerAsset | null>(null);
   const [loading, setLoading] = useState(false);
 
   const [errors, setErrors] = useState({ age: "", phone: "", address: "", emergency: "", gender: "", bloodType: "" });
 
+  // 🔄 Mantenemos sincronizado el formulario si el store cambia
   useEffect(() => {
-    setFirstName(profile.first_name ?? "");
-    setLastName(profile.last_name ?? "");
-    setEmail(profile.email ?? "");
-    setAge(profile.age?.toString() ?? "");
-    setPhone(profile.phone ?? "");
-    setAddress(profile.address ?? "");
-    setGender(profile.gender ?? "");
-    setBloodType(profile.blood_type ?? "");
-    setEmergency(profile.emergency_contact ?? "");
-    setPhoto(profile.photo_url ?? null);
-    setBirthDate(profile.birth_date ? new Date(profile.birth_date) : null);
+    if (profile) {
+      setFirstName(profile.first_Name ?? "");
+      setLastName(profile.last_Name ?? "");
+      setEmail(profile.email ?? "");
+      setAge(profile.age?.toString() ?? "");
+      setPhone(profile.phone ?? "");
+      setAddress(profile.address ?? "");
+      setGender(profile.gender ?? "");
+      setBloodType(profile.bloodType ?? "");
+      setEmergency(profile.emergencyContact ?? "");
+      setPhoto(profile.photoUrl ?? null);
+      setBirthDate(profile.birthDate ? new Date(profile.birthDate) : null);
+    }
   }, [profile]);
 
   const handleBirthDateChange = (_: any, selectedDate?: Date) => {
@@ -56,7 +69,7 @@ export default function EditProfileScreen({ navigation }: any) {
   const handleAge = (value: string) => { setAge(value); setErrors((p) => ({ ...p, age: validateAge(value) || "" })); };
   const handlePhone = (value: string) => { setPhone(value); setErrors((p) => ({ ...p, phone: validatePhone(value) || "" })); };
   const handleAddress = (value: string) => { setAddress(value); setErrors((p) => ({ ...p, address: validateText(value, "Dirección") || "" })); };
-  const handleEmergency = (value: string) => { setEmergency(value); setErrors((p) => ({ ...p, emergency: validateText(value, "Contacto emergencia") || "" })); };
+  const handleEmergency = (value: string) => { setEmergency(value); setErrors((p) => ({ ...p, emergency: validateText(value, "Contacto de emergencia") || "" })); };
   const handleGender = (value: string) => { setGender(value); setErrors((p) => ({ ...p, gender: validateGender(value) || "" })); };
   const handleBloodType = (value: string) => { setBloodType(value); setErrors((p) => ({ ...p, bloodType: validateBloodType(value) || "" })); };
 
@@ -70,7 +83,7 @@ export default function EditProfileScreen({ navigation }: any) {
       age: validateAge(age),
       phone: validatePhone(phone),
       address: validateText(address, "Dirección"),
-      emergency: validateText(emergency, "Contacto emergencia"),
+      emergency: validateText(emergency, "Contacto de emergencia"),
       gender: validateGender(gender),
       bloodType: validateBloodType(bloodType),
     };
@@ -83,32 +96,37 @@ export default function EditProfileScreen({ navigation }: any) {
       const { data: { user } } = await Supabase.auth.getUser();
       if (!user) return Alert.alert("Error", "Usuario no autenticado");
 
-      let imageUrl = profile.photo_url;
+      let imageUrl = profile?.photoUrl || null;
 
       if (photo?.startsWith("file")) {
         imageUrl = await uploadImage(user.id, photo);
       }
 
-      let documentUrl: string | undefined = undefined;
+      let documentUrl: string | null = profile?.birthCertificateUrl || null;
       if (document) {
-        documentUrl = await uploadDocument(user.id, document);
+        const result = await uploadDocument(user.id, document);
+        documentUrl = result ?? null;
       }
 
-      // ✅ Actualiza el contexto
-      updateProfile({
-        first_name: firstName,
-        last_name: lastName,
-        email,
-        age: Number(age),
-        phone,
-        address,
-        gender,
-        blood_type: bloodType,
-        emergency_contact: emergency,
-        photo_url: imageUrl ?? undefined,
-        birth_date: birthDate ? birthDate.toISOString() : null,
-      });
+      dispatch(
+        updateProfileRedux({
+          first_Name: firstName,
+          last_Name: lastName,
+          email,
+          age: Number(age),
+          phone,
+          address,
+          gender,
+          bloodType: bloodType,
+          emergencyContact: emergency,
+          photoUrl: imageUrl,
+          birthDate: birthDate ? birthDate.toISOString() : null,
+          birthCertificateUrl: documentUrl,
+          profileCompleted: true,
+        })
+      );
 
+      // 💾 Guardamos en la Base de Datos con los nombres de columna de Postgres (snake_case habitualmente)
       const { error } = await Supabase
         .from("users")
         .update({

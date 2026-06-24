@@ -4,15 +4,22 @@ import { useCaremapHealth } from "../contexts/CaremapHealthContexts";
 import CardProfile, { useSharedStyles } from "../components/CardProfile";
 import CustomButton from "../components/CustomButton";
 
+// 📦 Importamos Redux para traer los datos reales
+import { useAppSelector } from "../store/hooks";
 
 export default function ProfileScreen({ navigation }: any) {
-  const { isDarkMode, toggleTheme, profile } = useCaremapHealth();
+  // 🎨 Dejamos el Context SOLO para el tema visual
+  const { isDarkMode, toggleTheme } = useCaremapHealth();
   const sharedStyles = useSharedStyles();
 
-  if (!profile.user_id) {
+  // 📦 Traemos el perfil desde Redux (.data)
+  const profile = useAppSelector((state) => state.userProfile.data);
+
+  // 🛑 Validación por si no hay datos en el store todavía
+  if (!profile || !profile.user_id) {
     return (
       <View style={{ flex: 1, justifyContent: "center", alignItems: "center" }}>
-        <Text>Cargando perfil...</Text>
+        <Text>Cargando perfil... uwu</Text>
       </View>
     );
   }
@@ -37,14 +44,15 @@ export default function ProfileScreen({ navigation }: any) {
       }
     >
       <View style={sharedStyles.header}>
-        {profile.photo_url ? (
-          <Image source={{ uri: profile.photo_url }} style={sharedStyles.avatar} />
+        {/* ✅ Corregido photoUrl y se usa ?? undefined para que TypeScript no llore por el null */}
+        {profile.photoUrl ? (
+          <Image source={{ uri: profile.photoUrl ?? undefined }} style={sharedStyles.avatar} />
         ) : (
           <View style={sharedStyles.avatarPlaceholder}>
             <Text style={sharedStyles.avatarText}>Sin foto</Text>
           </View>
         )}
-        <Text style={sharedStyles.name}>{profile.first_name} {profile.last_name}</Text>
+        <Text style={sharedStyles.name}>{profile.first_Name} {profile.last_Name}</Text>
         <Text style={sharedStyles.email}>{profile.email}</Text>
       </View>
 
@@ -53,7 +61,7 @@ export default function ProfileScreen({ navigation }: any) {
         <View style={sharedStyles.cardSection}>
           <View style={sharedStyles.fieldCard}>
             <Text style={sharedStyles.fieldLabel}>Nombre completo</Text>
-            <Text style={sharedStyles.fieldValue}>{profile.first_name} {profile.last_name}</Text>
+            <Text style={sharedStyles.fieldValue}>{profile.first_Name} {profile.last_Name}</Text>
           </View>
           <View style={sharedStyles.fieldCard}>
             <Text style={sharedStyles.fieldLabel}>Edad</Text>
@@ -66,7 +74,8 @@ export default function ProfileScreen({ navigation }: any) {
           <View style={sharedStyles.fieldCard}>
             <Text style={sharedStyles.fieldLabel}>Nacimiento</Text>
             <Text style={sharedStyles.fieldValue}>
-              {profile.birth_date ? new Date(profile.birth_date).toLocaleDateString() : "-"}
+              {/* ✅ Corregido a birthDate */}
+              {profile.birthDate ? new Date(profile.birthDate).toLocaleDateString() : "-"}
             </Text>
           </View>
         </View>
@@ -89,7 +98,7 @@ export default function ProfileScreen({ navigation }: any) {
           </View>
           <View style={sharedStyles.fieldCard}>
             <Text style={sharedStyles.fieldLabel}>Emergencia</Text>
-            <Text style={sharedStyles.fieldValue}>{profile.emergency_contact ?? "-"}</Text>
+            <Text style={sharedStyles.fieldValue}>{profile.emergencyContact ?? "-"}</Text>
           </View>
         </View>
       </View>
@@ -99,7 +108,7 @@ export default function ProfileScreen({ navigation }: any) {
         <View style={sharedStyles.cardSection}>
           <View style={sharedStyles.fieldCard}>
             <Text style={sharedStyles.fieldLabel}>Tipo de sangre</Text>
-            <Text style={sharedStyles.fieldValue}>{profile.blood_type ?? "-"}</Text>
+            <Text style={sharedStyles.fieldValue}>{profile.bloodType ?? "-"}</Text>
           </View>
         </View>
       </View>
