@@ -27,7 +27,7 @@ export async function fetchNextAppointment(userId: string) {
     .gte("appointment_date", new Date().toISOString())
     .order("appointment_date", { ascending: true })
     .limit(1)
-    .maybeSingle(); // no truena si no hay ninguna cita futura, regresa null
+    .maybeSingle(); 
   if (error) throw error;
   if (!data) return null;
   return {

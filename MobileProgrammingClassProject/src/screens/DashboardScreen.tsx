@@ -34,14 +34,12 @@ type PendingDose = {
   scheduledTime: string;
 };
 
-// Formatea un objeto Date a "HH:MM" en 24h, que es como lo guardamos en BD
+// Formatea un objeto Date en 24h
 function formatTime(date: Date): string {
   const hours = date.getHours().toString().padStart(2, "0");
   const minutes = date.getMinutes().toString().padStart(2, "0");
   return `${hours}:${minutes}`;
 }
-
-// Convierte "14:00" a "2:00 PM" solo para mostrarlo bonito en pantalla
 function formatTimeDisplay(time: string): string {
   const [h, m] = time.split(":").map(Number);
   const period = h >= 12 ? "PM" : "AM";
@@ -110,8 +108,7 @@ export default function DashboardScreen() {
   const porcentajeProgreso =
     totalDosisHoy > 0 ? (dosisTomadasHoy / totalDosisHoy) * 100 : 0;
 
-  // 👇 Desglose por medicamento: cuántas tomas de HOY tiene cada uno vs
-  // cuántas le tocaban en total hoy. Ej: Paracetamol 2/3, Losartán 1/1.
+  // Desglose por medicamento: cuántas tomas de HOY tiene cada uno
   const medicationBreakdown = medications.map((med) => {
     const takenCount = todayLogs.filter(
       (log) => log.medication_id === med.id
@@ -125,8 +122,7 @@ export default function DashboardScreen() {
     };
   });
 
-  // 👇 Toggle de asistencia: actualiza la cita en BD y refleja el cambio
-  // localmente sin tener que recargar todo el dashboard de nuevo.
+  // Toggle de asistencia: actualiza la cita en BD y refleja el cambio localmente
   const handleToggleAttended = async (appointmentId: string, current: boolean) => {
     try {
       await toggleAppointmentAttended(appointmentId, !current);
@@ -139,10 +135,7 @@ export default function DashboardScreen() {
     }
   };
 
-  // 👇 Borra una cita, pero SOLO si ya está marcada como asistida.
-  // Esta es la regla de negocio: no se puede borrar una cita "pendiente",
-  // solo una que ya se completó (attended = true). La validación vive aquí
-  // porque appointmentService.deleteAppointment no valida nada por su cuenta.
+  // Borra una cita, pero SOLO si ya está marcada como asistida.
   const handleDeleteAppointment = (appointmentId: string, attended: boolean) => {
     if (!attended) {
       Alert.alert(
@@ -173,10 +166,7 @@ export default function DashboardScreen() {
     );
   };
 
-  // 👇 Desactiva un medicamento (no lo borra de la BD, solo deja de contar
-  // para hoy y días futuros — ver deactivateMedication). Si todavía tiene
-  // dosis pendientes hoy, se muestra una advertencia extra en el mensaje,
-  // pero el botón "Eliminar" sigue ahí y procede si el usuario insiste.
+  // Desactiva un medicamento, si no se ha tomado su dosis no deja al menos que el acepte
   const handleDeactivateMedication = (medicationId: string, medicationName: string) => {
     const breakdown = medicationBreakdown.find((m) => m.id === medicationId);
     const tienePendientesHoy = !!breakdown && breakdown.taken < breakdown.total;
@@ -207,14 +197,10 @@ export default function DashboardScreen() {
   const [showDoseModal, setShowDoseModal] = useState(false);
 
   // ============== Selección múltiple para borrar "Dosis registradas hoy" ==============
-  // selectionMode: si estamos en modo "elige varias para borrar".
-  // selectedLogIds: ids de medication_logs marcados en este modo.
   const [selectionMode, setSelectionMode] = useState(false);
   const [selectedLogIds, setSelectedLogIds] = useState<string[]>([]);
 
-  // Long-press en una fila: si no estábamos en modo selección, lo activa
-  // y marca esa fila de una vez. Si ya estábamos, no hace nada extra
-  // (el tap normal ya se encarga de marcar/desmarcar).
+  // Long-press para eliminar o  presionar una vez para
   const handleLongPressLog = (logId: string) => {
     if (!selectionMode) {
       setSelectionMode(true);
@@ -234,9 +220,7 @@ export default function DashboardScreen() {
     setSelectedLogIds([]);
   };
 
-  // Borra todos los logs marcados. El número en "Pastillas de hoy por
-  // medicamento" se actualiza solo, porque medicationBreakdown se calcula
-  // a partir de todayLogs en cada render.
+  // Borra todos los logs marcados. El número de Pastillas
   const handleDeleteSelectedLogs = () => {
     if (selectedLogIds.length === 0) return;
     Alert.alert(

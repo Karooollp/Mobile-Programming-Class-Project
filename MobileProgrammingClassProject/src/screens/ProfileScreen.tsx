@@ -4,18 +4,14 @@ import { useCaremapHealth } from "../contexts/CaremapHealthContexts";
 import CardProfile, { useSharedStyles } from "../components/CardProfile";
 import CustomButton from "../components/CustomButton";
 
-// 📦 Importamos Redux para traer los datos reales
 import { useAppSelector } from "../store/hooks";
 
 export default function ProfileScreen({ navigation }: any) {
-  // 🎨 Dejamos el Context SOLO para el tema visual
   const { isDarkMode, toggleTheme } = useCaremapHealth();
   const sharedStyles = useSharedStyles();
 
-  // 📦 Traemos el perfil desde Redux (.data)
   const profile = useAppSelector((state) => state.userProfile.data);
 
-  // 🛑 Validación por si no hay datos en el store todavía
   if (!profile || !profile.user_id) {
     return (
       <View style={{ flex: 1, justifyContent: "center", alignItems: "center" }}>
@@ -44,7 +40,7 @@ export default function ProfileScreen({ navigation }: any) {
       }
     >
       <View style={sharedStyles.header}>
-        {/* ✅ Corregido photoUrl y se usa ?? undefined para que TypeScript no llore por el null */}
+        {/* Corregido photoUrl y se usa ?? undefined para que TypeScript no llore por el null */}
         {profile.photoUrl ? (
           <Image source={{ uri: profile.photoUrl ?? undefined }} style={sharedStyles.avatar} />
         ) : (
@@ -74,7 +70,6 @@ export default function ProfileScreen({ navigation }: any) {
           <View style={sharedStyles.fieldCard}>
             <Text style={sharedStyles.fieldLabel}>Nacimiento</Text>
             <Text style={sharedStyles.fieldValue}>
-              {/* ✅ Corregido a birthDate */}
               {profile.birthDate ? new Date(profile.birthDate).toLocaleDateString() : "-"}
             </Text>
           </View>
