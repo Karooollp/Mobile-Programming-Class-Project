@@ -1,4 +1,3 @@
-// 🌐 Leemos la API KEY de forma segura desde las variables de entorno de Expo
 const API_KEY = process.env.EXPO_PUBLIC_GROQ_API_KEY; 
 const API_URL = "https://api.groq.com/openai/v1/chat/completions";
 
