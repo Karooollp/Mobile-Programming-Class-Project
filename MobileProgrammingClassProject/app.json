@@ -21,7 +21,8 @@
         "backgroundColor": "#ffffff"
       },
       "edgeToEdgeEnabled": true,
-      "predictiveBackGestureEnabled": false
+      "predictiveBackGestureEnabled": false,
+      "package": "com.misap05.MobileProgrammingClassProject"
     },
     "web": {
       "favicon": "./assets/favicon.png"
@@ -29,7 +30,14 @@
     "plugins": [
       "expo-secure-store",
       "@react-native-community/datetimepicker",
-      "expo-web-browser"
-    ]
+      "expo-web-browser",
+      "expo-font"
+    ],
+    "extra": {
+      "eas": {
+        "projectId": "920c97cd-2ba5-4865-a0a6-b1aa1e3d0661"
+      }
+    },
+    "owner": "misap05"
   }
 }

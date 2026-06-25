@@ -4,7 +4,7 @@ import { useCaremapHealth } from "../contexts/CaremapHealthContexts";
 import { useAppSelector } from "../store/hooks";
 import { fetchMedications, fetchTodayLogs } from "../services/medicationService";
 import { fetchNextAppointment } from "../services/appointmentService";
-
+import { Supabase } from "../lib/Supabase";
 export default function HomeScreen() {
   const { colors } = useCaremapHealth();
   const profile = useAppSelector((state) => state.userProfile.data);

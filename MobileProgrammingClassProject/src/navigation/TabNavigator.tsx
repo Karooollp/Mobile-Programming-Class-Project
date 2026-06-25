@@ -25,7 +25,7 @@ export default function TabNavigator() {
 
         // Seleccionamos el ícono según el nombre de la pestaña activa
         tabBarIcon: ({ color, size, focused }) => {
-          let iconName = "home-outline"; // valor por defecto
+          let iconName: keyof typeof Ionicons.glyphMap = "home-outline";
 
           if (route.name === "Inicio") {
             iconName = focused ? "home" : "home-outline";
@@ -39,7 +39,7 @@ export default function TabNavigator() {
             iconName = focused ? "person" : "person-outline";
           }
 
-          return <Ionicons name={iconName as any} size={size} color={color} />;
+          return <Ionicons name={iconName} size={size} color={color} />;
         },
       })}
     >
