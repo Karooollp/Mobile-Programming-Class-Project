@@ -1,40 +1,97 @@
-import React, { useState } from "react";
-import { View, Text, ScrollView, StyleSheet, TouchableOpacity, Alert } from "react-native";
+import React, { useState, useEffect, useCallback } from "react";
+import { View, Text, ScrollView, StyleSheet } from "react-native";
 import { useCaremapHealth } from "../contexts/CaremapHealthContexts";
+import { useAppSelector } from "../store/hooks";
+import { fetchMedications, fetchTodayLogs } from "../services/medicationService";
+import { fetchNextAppointment } from "../services/appointmentService";
 import { Supabase } from "../lib/Supabase";
 export default function HomeScreen() {
   const { colors } = useCaremapHealth();
-  const [actividadesCompletadas, setActividadesCompletadas] = useState(false);
+  const profile = useAppSelector((state) => state.userProfile.data);
+  const userId = profile?.user_id;
 
-  const handleCompletarDia = () => {
-    setActividadesCompletadas(true);
-    Alert.alert("¡Todo listo! ✨", "Has completado tus actividades de salud por hoy.");
-  };
+  const [medications, setMedications] = useState<any[]>([]);
+  const [todayLogs, setTodayLogs] = useState<any[]>([]);
+  const [nextAppointment, setNextAppointment] = useState<any>(null);
+  const [loading, setLoading] = useState(true);
+
+  // Mismo patrón que DashboardScreen: una sola función reusable que carga
+  // todo en paralelo con Promise.all.
+  const loadHomeData = useCallback(async () => {
+    if (!userId) return;
+    try {
+      const [meds, logs, appt] = await Promise.all([
+        fetchMedications(userId),
+        fetchTodayLogs(userId),
+        fetchNextAppointment(userId),
+      ]);
+      setMedications(meds);
+      setTodayLogs(logs);
+      setNextAppointment(appt);
+    } catch (error) {
+      console.log("Error cargando home:", error);
+    } finally {
+      setLoading(false);
+    }
+  }, [userId]);
+
+  useEffect(() => {
+    loadHomeData();
+  }, [loadHomeData]);
+
+  // Mismo cálculo que en DashboardScreen: total de dosis programadas hoy
+  // vs cuántas ya se registraron como tomadas.
+  const totalDosisHoy = medications.reduce(
+    (sum, med) => sum + med.scheduleTimes.length,
+    0
+  );
+  const dosisTomadasHoy = todayLogs.length;
+  const pendientesHoy = totalDosisHoy - dosisTomadasHoy;
+  if (loading) {
+    return (
+      <View style={[styles.screen, { backgroundColor: colors.background, justifyContent: "center", alignItems: "center" }]}>
+        <Text style={{ color: colors.textPrimary }}>Cargando tu información...</Text>
+      </View>
+    );
+  }
 
   return (
     <ScrollView
       style={[styles.screen, { backgroundColor: colors.background }]}
       contentContainerStyle={styles.content}
     >
-      <Text style={[styles.greeting, { color: colors.textPrimary }]}>¡Bienvenido! 👋</Text>
+      <Text style={[styles.greeting, { color: colors.textPrimary }]}>
+        ¡Bienvenido{profile?.first_Name ? `, ${profile.first_Name}` : ""}! 👋
+      </Text>
       <Text style={[styles.subtitle, { color: colors.textSecondary }]}>Aquí tienes un resumen de tu día</Text>
-
       {/* Tarjeta 1 */}
       <View style={[styles.card, { backgroundColor: colors.surface }]}>
         <Text style={[styles.cardTitle, { color: colors.textPrimary }]}>📋 Resumen médico del día</Text>
         <Text style={[styles.cardText, { color: colors.textSecondary }]}>
-          {actividadesCompletadas 
-            ? "¡Excelente trabajo! No tienes tareas médicas pendientes por hoy." 
-            : "Tienes actividades y dosis de medicamentos pendientes para hoy."}
+          {totalDosisHoy === 0
+            ? "Aún no tienes medicamentos registrados."
+            : pendientesHoy > 0
+            ? `Tienes ${pendientesHoy} dosis pendiente(s) de medicamentos para hoy.`
+            : "¡Excelente trabajo! No tienes tareas médicas pendientes por hoy."}
         </Text>
 
-        {!actividadesCompletadas && (
-          <TouchableOpacity style={[styles.actionButton, { backgroundColor: colors.primary }]} onPress={handleCompletarDia}>
-            <Text style={styles.actionButtonText}>✓ Completar Tareas de Hoy</Text>
-          </TouchableOpacity>
+        <View style={[styles.divider, { backgroundColor: colors.border }]} />
+
+        <Text style={[styles.cardTitle, { color: colors.textPrimary, marginBottom: 4 }]}>🗓️ Próxima consulta</Text>
+        {nextAppointment ? (
+          <Text style={[styles.cardText, { color: colors.textSecondary }]}>
+            {nextAppointment.doctorName}
+            {nextAppointment.reason ? ` · ${nextAppointment.reason}` : ""}
+            {" — "}
+            {new Date(nextAppointment.appointmentDate).toLocaleDateString()}{" "}
+            {new Date(nextAppointment.appointmentDate).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
+          </Text>
+        ) : (
+          <Text style={[styles.cardText, { color: colors.textSecondary }]}>
+            No tienes citas programadas.
+          </Text>
         )}
       </View>
-
       {/* Tarjeta 2 */}
       <View style={[styles.card, { backgroundColor: colors.surface }]}>
         <Text style={[styles.cardTitle, { color: colors.textPrimary }]}>💚 Estado de salud</Text>
@@ -42,15 +99,6 @@ export default function HomeScreen() {
           Tratamiento activo. Todo en orden con tus últimas lecturas de presión y temperatura.
         </Text>
       </View>
-
-      {/* Tarjeta 3 */}
-      <View style={[styles.card, { backgroundColor: colors.surface }]}>
-        <Text style={[styles.cardTitle, { color: colors.textPrimary }]}>💊 Alerta de tratamiento</Text>
-        <Text style={[styles.cardText, { color: colors.textSecondary }]}>
-          Recuerda mantener al día tus registros en la pestaña de Control Médico para evitar alertas.
-        </Text>
-      </View>
-
       {/* Tarjeta 4 (Highlight mantiene su color de marca fuerte) */}
       <View style={[styles.card, styles.cardHighlight, { backgroundColor: colors.primary }]}>
         <Text style={styles.cardTitleLight}>⚡ Acceso rápido</Text>
@@ -61,7 +109,6 @@ export default function HomeScreen() {
     </ScrollView>
   );
 }
-
 const styles = StyleSheet.create({
   screen: {
     flex: 1,
@@ -98,6 +145,10 @@ const styles = StyleSheet.create({
   cardText: {
     fontSize: 13,
     lineHeight: 20,
+  },
+  divider: {
+    height: 1,
+    marginVertical: 12,
   },
   cardHighlight: {
   },

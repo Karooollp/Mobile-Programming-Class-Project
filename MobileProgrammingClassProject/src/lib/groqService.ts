@@ -9,7 +9,7 @@ const API_URL = "https://api.groq.com/openai/v1/chat/completions";
  */
 export async function preguntarAGroq(mensajeDelUsuario: string, imagenBase64?: string): Promise<string> {
   try {
-    // 🛑 Validación de seguridad por si acaso se olvida configurar el .env
+    // Validacion por si falta la key
     if (!API_KEY) {
       console.error("❌ Error: EXPO_PUBLIC_GROQ_API_KEY no está definida en el archivo .env");
       return "¡Ups! Falta configurar las llaves de seguridad de la IA. Avisa al administrador. :c";
@@ -21,7 +21,6 @@ export async function preguntarAGroq(mensajeDelUsuario: string, imagenBase64?: s
     let contenidoMensaje: any = mensajeDelUsuario; 
 
     if (imagenBase64) {
-      // 🔄 Limpiamos cualquier salto de línea o espacio raro que meta Expo
       const base64Limpio = imagenBase64.replace(/[\n\r]/g, "").trim();
 
       modeloAUsar = "meta-llama/llama-4-scout-17b-16e-instruct"; 
@@ -33,7 +32,7 @@ export async function preguntarAGroq(mensajeDelUsuario: string, imagenBase64?: s
         {
           type: "image_url",
           image_url: {
-            // 🌟 Usamos el string ya purificado aquí
+            // Usamos el string ya purificado aquí
             url: `data:image/jpeg;base64,${base64Limpio}` 
           }
         }
