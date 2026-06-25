@@ -11,6 +11,7 @@ import {
   addMedication,
   logMedicationTaken,
   deleteMedicationLog,
+  deactivateMedication,
 } from "../services/medicationService";
 import {
   fetchNextAppointment,
@@ -170,6 +171,36 @@ export default function DashboardScreen() {
         },
       ]
     );
+  };
+
+  // 👇 Desactiva un medicamento (no lo borra de la BD, solo deja de contar
+  // para hoy y días futuros — ver deactivateMedication). Si todavía tiene
+  // dosis pendientes hoy, se muestra una advertencia extra en el mensaje,
+  // pero el botón "Eliminar" sigue ahí y procede si el usuario insiste.
+  const handleDeactivateMedication = (medicationId: string, medicationName: string) => {
+    const breakdown = medicationBreakdown.find((m) => m.id === medicationId);
+    const tienePendientesHoy = !!breakdown && breakdown.taken < breakdown.total;
+
+    const mensaje = tienePendientesHoy
+      ? `Aún tienes dosis pendientes de "${medicationName}" hoy. Si lo eliminas, dejará de aparecer en tu lista (hoy y en adelante). ¿Deseas continuar?`
+      : `¿Eliminar "${medicationName}" de tu lista de medicamentos? Ya no aparecerá hoy ni en días futuros. Tu historial de tomas anteriores se conserva.`;
+
+    Alert.alert("Eliminar medicamento", mensaje, [
+      { text: "Cancelar", style: "cancel" },
+      {
+        text: "Eliminar",
+        style: "destructive",
+        onPress: async () => {
+          try {
+            await deactivateMedication(medicationId);
+            setMedications((prev) => prev.filter((m) => m.id !== medicationId));
+          } catch (error) {
+            console.log(error);
+            Alert.alert("Error", "No se pudo eliminar el medicamento");
+          }
+        },
+      },
+    ]);
   };
 
   // ============== MODAL: Registrar Dosis Tomada ==============
@@ -382,10 +413,16 @@ export default function DashboardScreen() {
       {medicationBreakdown.length > 0 && (
         <View style={[styles.card, { backgroundColor: colors.surface, shadowColor: colors.cardShadow }]}>
           <Text style={[styles.metricLabel, { color: colors.textSecondary, marginBottom: 10 }]}>
-            Pastillas de hoy por medicamento
+            Pastillas de hoy por medicamento (mantén presionado para eliminar)
           </Text>
           {medicationBreakdown.map((med) => (
-            <View key={med.id} style={[styles.breakdownRow, { borderColor: colors.border }]}>
+            <TouchableOpacity
+              key={med.id}
+              style={[styles.breakdownRow, { borderColor: colors.border }]}
+              onLongPress={() => handleDeactivateMedication(med.id, med.name)}
+              delayLongPress={400}
+              activeOpacity={0.6}
+            >
               <View>
                 <Text style={{ color: colors.textPrimary, fontWeight: "600" }}>{med.name}</Text>
                 <Text style={{ color: colors.textSecondary, fontSize: 12 }}>{med.dosage}</Text>
@@ -399,7 +436,7 @@ export default function DashboardScreen() {
               >
                 {med.taken}/{med.total}
               </Text>
-            </View>
+            </TouchableOpacity>
           ))}
         </View>
       )}
