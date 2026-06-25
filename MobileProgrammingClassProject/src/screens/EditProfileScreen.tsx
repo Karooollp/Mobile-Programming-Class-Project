@@ -3,14 +3,13 @@ import { View, Text, TouchableOpacity, Alert, ActivityIndicator, ScrollView } fr
 import DateTimePicker from "@react-native-community/datetimepicker";
 import CustomInput from "../components/CustomInput";
 import { Supabase } from "../lib/Supabase";
-import { useCaremapHealth } from "../contexts/CaremapHealthContexts"; // ✅ Maneja solo UI ahora
+import { useCaremapHealth } from "../contexts/CaremapHealthContexts"; 
 import { validateAge, validatePhone, validateText, validateGender, validateBloodType, GENDERS, BLOOD_TYPES } from "../utils/validators/profileValidator";
 import CardProfile, { useSharedStyles } from "../components/CardProfile";
 import { uploadImage, uploadDocument } from "../services/storageService";
 import * as DocumentPicker from "expo-document-picker";
 import PhotoPicker from "../components/PhotoPicker";
 
-// 📦 Importes de Redux para manejar los datos
 import { useAppDispatch, useAppSelector } from "../store/hooks";
 import { updateProfile as updateProfileRedux } from "../store/slices/userProfileSlice";
 
@@ -18,16 +17,13 @@ export default function EditProfileScreen({ navigation }: any) {
   const sharedStyles = useSharedStyles();
   const dispatch = useAppDispatch();
   
-  // 🎨 El contexto ahora solo nos da los colores lindos
   const { colors } = useCaremapHealth(); 
   
-  // 📦 Traemos los datos desde Redux
   const profile = useAppSelector((state) => state.userProfile.data);
 
   const [showBloodTypes, setShowBloodTypes] = useState(false);
   const [showDatePicker, setShowDatePicker] = useState(false);
   
-  // 📋 Inicializamos estados vacíos o con lo que tenga Redux si existe
   const [firstName, setFirstName] = useState(profile?.first_Name ?? "");
   const [lastName, setLastName] = useState(profile?.last_Name ?? "");
   const [email, setEmail] = useState(profile?.email ?? "");
@@ -44,7 +40,6 @@ export default function EditProfileScreen({ navigation }: any) {
 
   const [errors, setErrors] = useState({ age: "", phone: "", address: "", emergency: "", gender: "", bloodType: "" });
 
-  // 🔄 Mantenemos sincronizado el formulario si el store cambia
   useEffect(() => {
     if (profile) {
       setFirstName(profile.first_Name ?? "");
@@ -126,7 +121,7 @@ export default function EditProfileScreen({ navigation }: any) {
         })
       );
 
-      // 💾 Guardamos en la Base de Datos con los nombres de columna de Postgres (snake_case habitualmente)
+      // Guardamos en la Base de Datos con los nombres de columna de Postgres (snake_case habitualmente)
       const { error } = await Supabase
         .from("users")
         .update({

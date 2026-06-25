@@ -25,7 +25,6 @@ export default function CardBase({ children, footer }: Props) {
   );
 }
 
-// ✅ Hook para estilos dinámicos — úsalo en las pantallas
 export function useSharedStyles() {
   const { colors } = useCaremapHealth();
 
@@ -78,8 +77,6 @@ export function useSharedStyles() {
   });
 }
 
-// ✅ Se mantiene para no romper imports existentes — pero los colores son fijos
-// Reemplaza sharedStyles por useSharedStyles() en cada pantalla
 export const sharedStyles = StyleSheet.create({
   title: { fontSize: 22, fontWeight: "700", color: "#111827", marginBottom: 20 },
   label: { fontSize: 15, fontWeight: "600", marginTop: 15, marginBottom: 10, color: "#111827" },
