@@ -6,7 +6,7 @@ import ProfileScreen from "../screens/ProfileScreen";
 import EditProfileScreen from "../screens/EditProfileScreen";
 import { View, Text } from "react-native"; 
 import TabNavigator from "./TabNavigator";
-
+import DoctorTabNavigator from "./DoctorTabNavigator";
 function MainTabsPlaceholder() {
   return (
     <View style={{ flex: 1, justifyContent: "center", alignItems: "center", backgroundColor: "#F8FAFC" }}>
@@ -24,6 +24,7 @@ export type RootStackParamList = {
   Login: undefined;
   Home: { email: string };
   UserTabs: undefined;
+  DoctorTabs: undefined;
   Register: undefined;
   Profile: undefined;
   EditProfile: undefined;
@@ -37,6 +38,7 @@ export default function StackNavigator() {
       <Stack.Screen name="Login" component={LoginScreen} />
       <Stack.Screen name="Register" component={RegisterScreen} />
       <Stack.Screen name="UserTabs" component={TabNavigator} />
+      <Stack.Screen name="DoctorTabs" component={DoctorTabNavigator} />
       <Stack.Screen name="Profile" component={ProfileScreen} />
       <Stack.Screen name="EditProfile" component={EditProfileScreen} />
     </Stack.Navigator>

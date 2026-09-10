@@ -43,15 +43,21 @@ export function LoginScreen({ navigation }: any) {
     dispatch(setUser(user));
 
     const profile = await fetchUserProfile(user.id);
-
+    console.log("PERFIL DEL USUARIO:", profile);
+    console.log("ROL:", profile?.role);
+    
     if (!profile) {
       Alert.alert("Error", "No se pudo cargar el perfil");
       return;
     }
-
+    
     dispatch(setProfile(profile));
-
-    navigation.replace("UserTabs");
+    
+    if (profile.role?.toLowerCase() === "doctor") {
+      navigation.replace("DoctorTabs");
+    } else {
+      navigation.replace("UserTabs");
+    }
   };
 
   const handleGoogleLogin = async () => {
@@ -111,10 +117,14 @@ export function LoginScreen({ navigation }: any) {
         Alert.alert("Error", "No se pudo cargar el perfil");
         return;
       }
-
+      
       dispatch(setProfile(profile));
-
-      navigation.replace("UserTabs");
+      
+      if (profile.role?.toLowerCase() === "doctor") {
+        navigation.replace("DoctorTabs");
+      } else {
+        navigation.replace("UserTabs");
+      }
     }
   };
 
