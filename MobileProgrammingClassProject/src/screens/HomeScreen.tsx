@@ -15,8 +15,6 @@ export default function HomeScreen() {
   const [nextAppointment, setNextAppointment] = useState<any>(null);
   const [loading, setLoading] = useState(true);
 
-  // Mismo patrón que DashboardScreen: una sola función reusable que carga
-  // todo en paralelo con Promise.all.
   const loadHomeData = useCallback(async () => {
     if (!userId) return;
     try {
@@ -39,8 +37,7 @@ export default function HomeScreen() {
     loadHomeData();
   }, [loadHomeData]);
 
-  // Mismo cálculo que en DashboardScreen: total de dosis programadas hoy
-  // vs cuántas ya se registraron como tomadas.
+  // Mismo cálculo que en DashboardScreen: total de dosis programadas y cuantas estan pendientes hoy
   const totalDosisHoy = medications.reduce(
     (sum, med) => sum + med.scheduleTimes.length,
     0

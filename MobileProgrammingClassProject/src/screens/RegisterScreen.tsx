@@ -18,7 +18,6 @@ import { setProfile } from "../store/slices/userProfileSlice";
 
 import * as WebBrowser from "expo-web-browser";
 
-// 🎨 SOLO UI
 import { useCaremapHealth } from "../contexts/CaremapHealthContexts";
 
 export default function RegisterScreen({ navigation }: any) {
@@ -96,7 +95,6 @@ export default function RegisterScreen({ navigation }: any) {
       return Alert.alert("Error perfil", profileError.message);
     }
 
-    // 📦 REDUX
     dispatch(
       setProfile({
         user_id: userId,
@@ -172,7 +170,6 @@ export default function RegisterScreen({ navigation }: any) {
       return Alert.alert("Error perfil", profileError.message);
     }
 
-    // 📦 REDUX
     dispatch(
       setProfile({
         user_id: user.id,

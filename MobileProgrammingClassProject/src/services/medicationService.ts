@@ -1,8 +1,6 @@
 import { Supabase } from "../lib/Supabase";
 
 // Trae todos los medicamentos ACTIVOS del usuario.
-// Los desactivados (active = false) no aparecen aquí, así que tampoco
-// cuentan en el dashboard ni en días futuros.
 export async function fetchMedications(userId: string) {
   const { data, error } = await Supabase
     .from("medications")
@@ -77,9 +75,7 @@ export async function logMedicationTaken(
   return data;
 }
 
-// Elimina un log de toma de medicamento específico (una dosis ya registrada).
-// Esto NO borra el medicamento, solo el registro de "ya la tomé hoy",
-// lo cual hace que esa dosis vuelva a aparecer como pendiente.
+// Elimina un log de toma de medicamento específico (una dosis ya registrada). Solo elimina el estado de "ya la tomé hoy",
 export async function deleteMedicationLog(logId: string) {
   const { error } = await Supabase
     .from("medication_logs")
@@ -89,9 +85,6 @@ export async function deleteMedicationLog(logId: string) {
 }
 
 // Desactiva un medicamento (active = false) en vez de borrarlo.
-// El medicamento sigue existiendo en la BD (y sus logs/historial pasado
-// también), pero fetchMedications ya no lo trae, así que deja de contar
-// para hoy y para cualquier día futuro.
 export async function deactivateMedication(medicationId: string) {
   const { error } = await Supabase
     .from("medications")
