@@ -36,7 +36,7 @@
       "expo-splash-screen",
       "expo-status-bar"
     ],
-    "extra": {
+    "_extra": {
       "eas": {
         "projectId": "920c97cd-2ba5-4865-a0a6-b1aa1e3d0661"
       }

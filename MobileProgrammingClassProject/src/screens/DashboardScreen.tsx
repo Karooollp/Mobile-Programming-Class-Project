@@ -1,10 +1,21 @@
-import React, { useState, useEffect, useCallback } from "react";
-import { View, Text, ScrollView, StyleSheet, Alert, TouchableOpacity, Modal } from "react-native";
+import React, { useState, useEffect, useCallback, useMemo } from "react";
+import {
+  View,
+  Text,
+  ScrollView,
+  StyleSheet,
+  Alert,
+  TouchableOpacity,
+  Modal,
+  Platform,
+  KeyboardAvoidingView,
+} from "react-native";
 import DateTimePicker from "@react-native-community/datetimepicker";
 import { useCaremapHealth } from "../contexts/CaremapHealthContexts";
 import { useAppSelector } from "../store/hooks";
 import CustomInput from "../components/CustomInput";
 import CustomButton from "../components/CustomButton";
+import { Supabase } from "../lib/Supabase";
 import {
   fetchMedications,
   fetchTodayLogs,
@@ -16,10 +27,62 @@ import {
 import {
   fetchNextAppointment,
   fetchAppointmentsRange,
-  toggleAppointmentAttended,
   addAppointment,
-  deleteAppointment,
 } from "../services/appointmentService";
+import {
+  solicitarPermisosNotificaciones,
+  programarRecordatoriosCita,
+  registrarAlertaEmergencia,
+  contarAlertasDelMes,
+} from "../services/notificationService";
+import { generateScheduleTimes, FrequencyType } from "../utils/types/scheduleHelper";
+import { AppointmentScheduleTree } from "../utils/types/appointmentScheduleTree";
+
+
+// ============================================================================
+// 🧠 ESTRUCTURA DE DATOS: COLA DE ATENCIÓN DE MÉDICOS (FIFO)
+// ============================================================================
+export class DoctorQueue {
+  // El árbol es quien realmente sabe qué horas están ocupadas ese día:
+  // cada cita se inserta como un nodo, y para saber si una hora está libre
+  // el árbol arranca en la raíz y baja por la rama que corresponde.
+  private scheduleTree = new AppointmentScheduleTree();
+  private maxDailyCapacity: number;
+
+  constructor(appointments: any[], maxDailyCapacity: number = 8) {
+    appointments.forEach((a) => {
+      this.scheduleTree.insert(new Date(a.appointmentDate).getTime(), a.id, !!a.attended);
+    });
+    this.maxDailyCapacity = maxDailyCapacity;
+  }
+
+  // Cupo diario: cuenta TODAS las citas de hoy en el árbol (atendidas o
+  // no) — una cita ya atendida igual ocupó un espacio de la agenda.
+  public isFull(): boolean {
+    return this.scheduleTree.count() >= this.maxDailyCapacity;
+  }
+
+  // Evita "muchos pacientes a la vez": busca en el árbol si ya existe una
+  // cita exactamente a esa hora con este doctor.
+  public hasTimeConflict(candidateDate: Date): boolean {
+    return this.scheduleTree.hasConflict(candidateDate.getTime());
+  }
+
+  // La fila de espera (FIFO) sale del recorrido in-order del árbol —que ya
+  // viene ordenado cronológicamente— filtrando solo las citas pendientes.
+  private getWaitingQueue() {
+    return this.scheduleTree.toSortedList().filter((node) => !node.attended);
+  }
+
+  public getPatientPosition(appointmentId: string): number {
+    const index = this.getWaitingQueue().findIndex((node) => node.appointmentId === appointmentId);
+    return index !== -1 ? index + 1 : -1;
+  }
+
+  public getWaitingCount(): number {
+    return this.getWaitingQueue().length;
+  }
+}
 
 type Medication = {
   id: string;
@@ -34,12 +97,29 @@ type PendingDose = {
   scheduledTime: string;
 };
 
-// Formatea un objeto Date en 24h
+type Doctor = {
+  user_id: string;
+  first_name: string;
+  last_name: string;
+  specialty?: string;
+};
+
 function formatTime(date: Date): string {
   const hours = date.getHours().toString().padStart(2, "0");
   const minutes = date.getMinutes().toString().padStart(2, "0");
   return `${hours}:${minutes}`;
 }
+
+// Convierte "14:30" -> un objeto Date de HOY con esa hora/minuto.
+// Es el inverso de formatTime(). Sin esto, el picker siempre se abre
+// mostrando la hora actual del celular en vez de la hora ya seleccionada.
+function parseTimeStringToDate(time: string): Date {
+  const [h, m] = time.split(":").map(Number);
+  const date = new Date();
+  date.setHours(Number.isFinite(h) ? h : 0, Number.isFinite(m) ? m : 0, 0, 0);
+  return date;
+}
+
 function formatTimeDisplay(time: string): string {
   const [h, m] = time.split(":").map(Number);
   const period = h >= 12 ? "PM" : "AM";
@@ -47,7 +127,7 @@ function formatTimeDisplay(time: string): string {
   return `${hour12}:${m.toString().padStart(2, "0")} ${period}`;
 }
 
-export default function DashboardScreen() {
+export default function DashboardScreen({ navigation }: any) {
   const { colors } = useCaremapHealth();
   const styles = getStyles(colors);
   const profile = useAppSelector((state) => state.userProfile.data);
@@ -58,20 +138,43 @@ export default function DashboardScreen() {
   const [nextAppointment, setNextAppointment] = useState<any>(null);
   const [appointmentsRange, setAppointmentsRange] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
+  const [alertasDelMes, setAlertasDelMes] = useState(0);
+  const [doctorsList, setDoctorsList] = useState<Doctor[]>([]);
+  const [selectedDoctor, setSelectedDoctor] = useState<Doctor | null>(null);
+  const [showDoctorDropdown, setShowDoctorDropdown] = useState(false);
+
+  useEffect(() => {
+    solicitarPermisosNotificaciones();
+    loadDoctors();
+  }, []);
+
+  const loadDoctors = async () => {
+    try {
+      setDoctorsList([
+        { user_id: "doc-1", first_name: "Dr. Carlos", last_name: "Mendoza", specialty: "Medicina General" },
+        { user_id: "doc-2", first_name: "Dra. Ana", last_name: "Martínez", specialty: "Pediatría" },
+        { user_id: "doc-3", first_name: "Dr. Roberto", last_name: "Gómez", specialty: "Cardiología" },
+      ]);
+    } catch (e) {
+      console.log("Error cargando médicos:", e);
+    }
+  };
 
   const loadDashboardData = useCallback(async () => {
     if (!userId) return;
     try {
-      const [meds, logs, appt, apptRange] = await Promise.all([
+      const [meds, logs, appt, apptRange, alertas] = await Promise.all([
         fetchMedications(userId),
         fetchTodayLogs(userId),
         fetchNextAppointment(userId),
         fetchAppointmentsRange(userId, 30),
+        contarAlertasDelMes(userId),
       ]);
       setMedications(meds);
       setTodayLogs(logs);
       setNextAppointment(appt);
       setAppointmentsRange(apptRange);
+      setAlertasDelMes(alertas);
     } catch (error) {
       console.log("Error cargando dashboard:", error);
       Alert.alert("Error", "No se pudo cargar la información del dashboard");
@@ -84,17 +187,23 @@ export default function DashboardScreen() {
     loadDashboardData();
   }, [loadDashboardData]);
 
+        // Solo consideramos logs cuyo medicamento sigue activo. Si eliminaste un
+    // medicamento, sus dosis registradas dejan de contar y dejan de pintarse.
+    const visibleLogs = useMemo(() => {
+      const activeIds = new Set(medications.map((m) => m.id));
+      return todayLogs.filter((log) => activeIds.has(log.medication_id));
+    }, [todayLogs, medications]);
   const totalDosisHoy = medications.reduce(
     (sum, med) => sum + med.scheduleTimes.length,
     0
   );
-  const dosisTomadasHoy = todayLogs.length;
+  const dosisTomadasHoy = visibleLogs.length;
 
   const pendingDoses: PendingDose[] = medications.flatMap((med) =>
     med.scheduleTimes
       .filter(
         (time) =>
-          !todayLogs.some(
+          !visibleLogs.some(
             (log) => log.medication_id === med.id && log.scheduled_time === time
           )
       )
@@ -108,9 +217,8 @@ export default function DashboardScreen() {
   const porcentajeProgreso =
     totalDosisHoy > 0 ? (dosisTomadasHoy / totalDosisHoy) * 100 : 0;
 
-  // Desglose por medicamento: cuántas tomas de HOY tiene cada uno
   const medicationBreakdown = medications.map((med) => {
-    const takenCount = todayLogs.filter(
+    const takenCount = visibleLogs.filter(
       (log) => log.medication_id === med.id
     ).length;
     return {
@@ -122,58 +230,14 @@ export default function DashboardScreen() {
     };
   });
 
-  // Toggle de asistencia: actualiza la cita en BD y refleja el cambio localmente
-  const handleToggleAttended = async (appointmentId: string, current: boolean) => {
-    try {
-      await toggleAppointmentAttended(appointmentId, !current);
-      setAppointmentsRange((prev) =>
-        prev.map((a) => (a.id === appointmentId ? { ...a, attended: !current } : a))
-      );
-    } catch (error) {
-      console.log(error);
-      Alert.alert("Error", "No se pudo actualizar la cita");
-    }
-  };
 
-  // Borra una cita, pero SOLO si ya está marcada como asistida.
-  const handleDeleteAppointment = (appointmentId: string, attended: boolean) => {
-    if (!attended) {
-      Alert.alert(
-        "Cita no completada",
-        "Solo puedes eliminar una cita después de marcarla como asistida."
-      );
-      return;
-    }
-    Alert.alert(
-      "Eliminar cita",
-      "¿Seguro que quieres eliminar esta cita? Esta acción no se puede deshacer.",
-      [
-        { text: "Cancelar", style: "cancel" },
-        {
-          text: "Eliminar",
-          style: "destructive",
-          onPress: async () => {
-            try {
-              await deleteAppointment(appointmentId);
-              setAppointmentsRange((prev) => prev.filter((a) => a.id !== appointmentId));
-            } catch (error) {
-              console.log(error);
-              Alert.alert("Error", "No se pudo eliminar la cita");
-            }
-          },
-        },
-      ]
-    );
-  };
-
-  // Desactiva un medicamento, si no se ha tomado su dosis no deja al menos que el acepte
   const handleDeactivateMedication = (medicationId: string, medicationName: string) => {
     const breakdown = medicationBreakdown.find((m) => m.id === medicationId);
     const tienePendientesHoy = !!breakdown && breakdown.taken < breakdown.total;
 
     const mensaje = tienePendientesHoy
-      ? `Aún tienes dosis pendientes de "${medicationName}" hoy. Si lo eliminas, dejará de aparecer en tu lista (hoy y en adelante). ¿Deseas continuar?`
-      : `¿Eliminar "${medicationName}" de tu lista de medicamentos? Ya no aparecerá hoy ni en días futuros. Tu historial de tomas anteriores se conserva.`;
+      ? `Aún tienes dosis pendientes de "${medicationName}" hoy. Si lo eliminas, dejará de aparecer en tu lista. ¿Deseas continuar?`
+      : `¿Eliminar "${medicationName}" de tu lista de medicamentos?`;
 
     Alert.alert("Eliminar medicamento", mensaje, [
       { text: "Cancelar", style: "cancel" },
@@ -181,26 +245,25 @@ export default function DashboardScreen() {
         text: "Eliminar",
         style: "destructive",
         onPress: async () => {
-          try {
-            await deactivateMedication(medicationId);
-            setMedications((prev) => prev.filter((m) => m.id !== medicationId));
-          } catch (error) {
-            console.log(error);
-            Alert.alert("Error", "No se pudo eliminar el medicamento");
-          }
-        },
+        try {
+          await deactivateMedication(medicationId);
+          setMedications((prev) => prev.filter((m) => m.id !== medicationId));
+          setTodayLogs((prev) => prev.filter((l) => l.medication_id !== medicationId));
+          setSelectionMode(false);
+          setSelectedLogIds([]);
+        } catch (error) {
+          console.log(error);
+          Alert.alert("Error", "No se pudo eliminar el medicamento");
+        }
+      },
       },
     ]);
   };
 
-  // ============== MODAL: Registrar Dosis Tomada ==============
   const [showDoseModal, setShowDoseModal] = useState(false);
-
-  // ============== Selección múltiple para borrar "Dosis registradas hoy" ==============
   const [selectionMode, setSelectionMode] = useState(false);
   const [selectedLogIds, setSelectedLogIds] = useState<string[]>([]);
 
-  // Long-press para eliminar o  presionar una vez para
   const handleLongPressLog = (logId: string) => {
     if (!selectionMode) {
       setSelectionMode(true);
@@ -208,7 +271,6 @@ export default function DashboardScreen() {
     }
   };
 
-  // Tap normal sobre una fila DURANTE el modo selección: toggle de marcado.
   const handleTogglePressLog = (logId: string) => {
     setSelectedLogIds((prev) =>
       prev.includes(logId) ? prev.filter((id) => id !== logId) : [...prev, logId]
@@ -220,12 +282,11 @@ export default function DashboardScreen() {
     setSelectedLogIds([]);
   };
 
-  // Borra todos los logs marcados. El número de Pastillas
   const handleDeleteSelectedLogs = () => {
     if (selectedLogIds.length === 0) return;
     Alert.alert(
       "Eliminar dosis",
-      `¿Eliminar ${selectedLogIds.length} registro(s) de dosis tomada? Esta acción no se puede deshacer.`,
+      `¿Eliminar ${selectedLogIds.length} registro(s) de dosis tomada?`,
       [
         { text: "Cancelar", style: "cancel" },
         {
@@ -239,7 +300,7 @@ export default function DashboardScreen() {
               setSelectedLogIds([]);
             } catch (error) {
               console.log(error);
-              Alert.alert("Error", "No se pudieron eliminar todos los registros");
+              Alert.alert("Error", "No se pudieron eliminar los registros");
             }
           },
         },
@@ -260,80 +321,163 @@ export default function DashboardScreen() {
     }
   };
 
-  // ============== MODAL: Agregar Medicamento ==============
+  // ============== MODAL: AGREGAR MEDICAMENTO CON CONFIGURACIÓN DE FRECUENCIA ==============
   const [showMedModal, setShowMedModal] = useState(false);
   const [medName, setMedName] = useState("");
   const [medDosage, setMedDosage] = useState("");
-  const [medSchedule, setMedSchedule] = useState<string[]>([]);
+
+  const [freqType, setFreqType] = useState<FrequencyType>("TIMES_PER_DAY");
+  const [intervalHours, setIntervalHours] = useState<number>(8);
+  const [timesPerDay, setTimesPerDay] = useState<number>(2);
+  const [startTime, setStartTime] = useState<string>("08:00");
+
+  const [customSchedule, setCustomSchedule] = useState<string[]>([]);
   const [showTimePicker, setShowTimePicker] = useState(false);
+  const [showStartTimePicker, setShowStartTimePicker] = useState(false);
+  const [savingMed, setSavingMed] = useState(false);
+
+  // Cálculo en tiempo real de los horarios
+  const computedSchedule = useMemo(() => {
+    const raw =
+      freqType === "CUSTOM"
+        ? customSchedule
+        : generateScheduleTimes({
+            type: freqType,
+            intervalHours,
+            timesPerDay,
+            startTime,
+          });
+
+    // Piensa en esto como ordenar fichas de un reloj: si el tratamiento
+    // arranca a las 22:00 con intervalo de 8h, el cálculo módulo 24 da
+    // 22:00, 06:00, 14:00 (en ese orden, porque "da la vuelta" al día).
+    // Eso se ve raro en la lista de chips, así que lo ordenamos de
+    // 00:00 a 23:59 para mostrarlo de forma predecible.
+    // El Set además elimina cualquier horario duplicado (por ejemplo si
+    // el redondeo de minutos hace que dos tomas caigan en la misma HH:mm),
+    // lo cual también evita el warning de "keys" repetidas en los chips.
+    return Array.from(new Set(raw)).sort();
+  }, [freqType, intervalHours, timesPerDay, startTime, customSchedule]);
 
   const resetMedModal = () => {
     setMedName("");
     setMedDosage("");
-    setMedSchedule([]);
+    setFreqType("TIMES_PER_DAY");
+    setIntervalHours(8);
+    setTimesPerDay(2);
+    setStartTime("08:00");
+    setCustomSchedule([]);
   };
 
-  const handleAddTimeToSchedule = (_: any, selectedDate?: Date) => {
+  const handleAddTimeToCustomSchedule = (event: any, selectedDate?: Date) => {
+    // En Android el picker se cierra solo al elegir; en iOS el control
+    // se queda abierto y dispara onChange mientras el usuario desliza.
+    // Cerrarlo aquí en ambos casos es seguro porque solo usamos "spinner"
+    // simple sin botón "Listo".
     setShowTimePicker(false);
-    if (selectedDate) {
-      const formatted = formatTime(selectedDate);
-      if (!medSchedule.includes(formatted)) {
-        setMedSchedule((prev) => [...prev, formatted].sort());
-      }
+    // event.type === "dismissed" significa que el usuario canceló
+    // (por ejemplo tocó fuera del picker en Android): en ese caso
+    // selectedDate a veces igual llega con un valor, así que revisamos
+    // el tipo de evento explícitamente en vez de confiar solo en selectedDate.
+    if (event?.type === "dismissed" || !selectedDate) return;
+
+    const formatted = formatTime(selectedDate);
+    if (!customSchedule.includes(formatted)) {
+      setCustomSchedule((prev) => [...prev, formatted].sort());
     }
   };
 
-  const handleRemoveTime = (time: string) => {
-    setMedSchedule((prev) => prev.filter((t) => t !== time));
+  const handleStartTimeChange = (event: any, selectedDate?: Date) => {
+    setShowStartTimePicker(false);
+    if (event?.type === "dismissed" || !selectedDate) return;
+    setStartTime(formatTime(selectedDate));
+  };
+
+  const handleRemoveCustomTime = (time: string) => {
+    setCustomSchedule((prev) => prev.filter((t) => t !== time));
   };
 
   const handleSaveMedication = async () => {
-    if (!userId) return;
-    if (!medName.trim() || !medDosage.trim() || medSchedule.length === 0) {
-      return Alert.alert(
-        "Campos incompletos",
-        "Agrega nombre, dosis y al menos un horario."
-      );
+    if (!userId || savingMed) return; // candado: si ya está guardando, ignora toques repetidos
+    if (!medName.trim() || !medDosage.trim() || computedSchedule.length === 0) {
+      return Alert.alert("Campos incompletos", "Por favor completa el nombre, dosis y horarios.");
     }
+    setSavingMed(true);
     try {
-      await addMedication(userId, medName.trim(), medDosage.trim(), medSchedule);
-      Alert.alert("Listo", "Medicamento agregado correctamente.");
+      await addMedication(userId, medName.trim(), medDosage.trim(), computedSchedule, {
+        type: freqType,
+        intervalHours: freqType === "INTERVAL" ? intervalHours : undefined,
+        timesPerDay: freqType === "TIMES_PER_DAY" ? timesPerDay : undefined,
+        startTime,
+      });
+      Alert.alert("¡Listo! 💊", "Medicamento agregado correctamente.");
       resetMedModal();
       setShowMedModal(false);
       await loadDashboardData();
     } catch (error) {
       console.log(error);
       Alert.alert("Error", "No se pudo guardar el medicamento");
+    } finally {
+      setSavingMed(false);
     }
   };
 
-  // ============== MODAL: Agregar Cita ==============
+  // ============== MODAL & LÓGICA: Agregar Cita con COLA (FIFO) ==============
   const [showApptModal, setShowApptModal] = useState(false);
-  const [apptDoctor, setApptDoctor] = useState("");
   const [apptReason, setApptReason] = useState("");
   const [apptDate, setApptDate] = useState(new Date());
   const [showDatePicker, setShowDatePicker] = useState(false);
   const [showApptTimePicker, setShowApptTimePicker] = useState(false);
 
   const resetApptModal = () => {
-    setApptDoctor("");
+    setSelectedDoctor(null);
     setApptReason("");
     setApptDate(new Date());
+    setShowDoctorDropdown(false);
   };
 
   const handleSaveAppointment = async () => {
     if (!userId) return;
-    if (!apptDoctor.trim()) {
-      return Alert.alert("Campo incompleto", "Indica el doctor o lugar de la cita.");
+    if (!selectedDoctor) {
+      return Alert.alert("Campo incompleto", "Por favor selecciona un médico de la lista.");
     }
+
+    const doctorFullName = `${selectedDoctor.first_name} ${selectedDoctor.last_name}`;
+
+    const doctorApptsSameDay = appointmentsRange.filter((a) => {
+      const sameDoctor = a.doctorName === doctorFullName;
+      const sameDate =
+        new Date(a.appointmentDate).toDateString() === apptDate.toDateString();
+      return sameDoctor && sameDate;
+    });
+
+    const doctorQueue = new DoctorQueue(doctorApptsSameDay, 8);
+
+    if (doctorQueue.isFull()) {
+      return Alert.alert(
+        "Cupo Lleno 🙀",
+        `El ${doctorFullName} ya alcanzó el límite máximo de 8 pacientes agendados para el ${apptDate.toLocaleDateString()}. Selecciona otra fecha u otro médico.`
+      );
+    }
+
+    if (doctorQueue.hasTimeConflict(apptDate)) {
+      return Alert.alert(
+        "Horario ocupado",
+        `Ya existe una cita con ${doctorFullName} exactamente a esa hora. Elige otro horario.`
+      );
+    }
+
     try {
-      await addAppointment(
+      const nuevaCita = await addAppointment(
         userId,
-        apptDoctor.trim(),
+        doctorFullName,
         apptReason.trim(),
         apptDate.toISOString()
       );
-      Alert.alert("Listo", "Cita agregada correctamente.");
+
+      await programarRecordatoriosCita(nuevaCita.id, doctorFullName, apptDate);
+
+      Alert.alert("¡Éxito! 🎉", "Cita agendada y registrada en la cola del médico.");
       resetApptModal();
       setShowApptModal(false);
       await loadDashboardData();
@@ -341,6 +485,37 @@ export default function DashboardScreen() {
       console.log(error);
       Alert.alert("Error", "No se pudo guardar la cita");
     }
+  };
+
+  const [sendingEmergency, setSendingEmergency] = useState(false);
+
+  const handleEmergencyAlert = () => {
+    if (!userId || sendingEmergency) return;
+    Alert.alert(
+      "🚨 Alerta de emergencia",
+      "Esto solo guarda un registro en la app — todavía NO le avisa a tu médico en tiempo real. Si es una urgencia médica real, llama de inmediato al 911 o a tu médico.\n\n¿Quieres registrar la alerta de todas formas?",
+      [
+        { text: "Cancelar", style: "cancel" },
+        {
+          text: "Registrar alerta",
+          style: "destructive",
+          onPress: async () => {
+            setSendingEmergency(true);
+            try {
+              await registrarAlertaEmergencia(userId);
+              setAlertasDelMes((prev) => prev + 1);   // actualización optimista, se ve al instante
+              Alert.alert("Alerta registrada", "Quedó guardada con la fecha y hora de hoy.");
+            await loadDashboardData();              // y luego confirma con el valor real de la BD
+            } catch (error) {
+              console.log(error);
+              Alert.alert("Error", "No se pudo registrar la alerta.");
+            } finally {
+              setSendingEmergency(false);
+            }
+          },
+        },
+      ]
+    );
   };
 
   if (loading) {
@@ -393,47 +568,47 @@ export default function DashboardScreen() {
         </TouchableOpacity>
       </View>
 
-      {/* Desglose de pastillas de hoy, por medicamento */}
+      {/* Desglose de pastillas de hoy */}
       {medicationBreakdown.length > 0 && (
         <View style={[styles.card, { backgroundColor: colors.surface, shadowColor: colors.cardShadow }]}>
           <Text style={[styles.metricLabel, { color: colors.textSecondary, marginBottom: 10 }]}>
             Pastillas de hoy por medicamento (mantén presionado para eliminar)
           </Text>
           {medicationBreakdown.map((med) => (
-            <TouchableOpacity
-              key={med.id}
-              style={[styles.breakdownRow, { borderColor: colors.border }]}
-              onLongPress={() => handleDeactivateMedication(med.id, med.name)}
-              delayLongPress={400}
-              activeOpacity={0.6}
-            >
-              <View>
-                <Text style={{ color: colors.textPrimary, fontWeight: "600" }}>{med.name}</Text>
-                <Text style={{ color: colors.textSecondary, fontSize: 12 }}>{med.dosage}</Text>
-              </View>
-              <Text
-                style={{
-                  color: med.taken >= med.total ? colors.primary : colors.textSecondary,
-                  fontWeight: "700",
-                  fontSize: 16,
-                }}
-              >
-                {med.taken}/{med.total}
-              </Text>
-            </TouchableOpacity>
-          ))}
+  <TouchableOpacity
+    key={med.id}
+    style={[styles.breakdownRow, { borderColor: colors.border }]}
+    onLongPress={() => handleDeactivateMedication(med.id, med.name)}
+    delayLongPress={400}
+    activeOpacity={0.6}
+  >
+    <View>
+      <Text style={{ color: colors.textPrimary, fontWeight: "600" }}>{med.name}</Text>
+      <Text style={{ color: colors.textSecondary, fontSize: 12 }}>{med.dosage}</Text>
+    </View>
+    <Text
+      style={{
+        color: med.taken >= med.total ? colors.primary : colors.textSecondary,
+        fontWeight: "700",
+        fontSize: 16,
+      }}
+    >
+      {med.taken}/{med.total}
+    </Text>
+  </TouchableOpacity>
+))}
         </View>
       )}
 
-      {/* Dosis ya registradas hoy — mantén presionado para activar selección múltiple */}
-      {todayLogs.length > 0 && (
+      {/* Dosis ya registradas hoy */}
+      {visibleLogs.length > 0 && (
         <View style={[styles.card, { backgroundColor: colors.surface, shadowColor: colors.cardShadow }]}>
           <Text style={[styles.metricLabel, { color: colors.textSecondary, marginBottom: 10 }]}>
             {selectionMode
               ? "Toca para seleccionar las dosis a eliminar"
               : "Dosis registradas hoy (mantén presionado para eliminar)"}
           </Text>
-          {todayLogs.map((log) => {
+          {visibleLogs.map((log) => {
             const med = medications.find((m) => m.id === log.medication_id);
             const isSelected = selectedLogIds.includes(log.id);
             return (
@@ -457,14 +632,14 @@ export default function DashboardScreen() {
                       {isSelected && <Text style={{ color: "#FFF", fontSize: 12, fontWeight: "700" }}>✓</Text>}
                     </View>
                   )}
-                  <View>
-                    <Text style={{ color: colors.textPrimary, fontWeight: "600" }}>
-                      {med?.name ?? "Medicamento"}
-                    </Text>
-                    <Text style={{ color: colors.textSecondary, fontSize: 12 }}>
-                      {formatTimeDisplay(log.scheduled_time)}
-                    </Text>
-                  </View>
+                              {med ? (
+              <View>
+                <Text style={{ color: colors.textPrimary, fontWeight: "600" }}>{med.name}</Text>
+                <Text style={{ color: colors.textSecondary, fontSize: 12 }}>
+                  {log.scheduled_time ? formatTimeDisplay(log.scheduled_time) : "Sin horario"}
+                </Text>
+              </View>
+            ) : null}
                 </View>
                 {!selectionMode && <Text style={{ color: colors.primary, fontWeight: "700" }}>✓</Text>}
               </TouchableOpacity>
@@ -495,7 +670,7 @@ export default function DashboardScreen() {
         </View>
       )}
 
-      {/* Tarjeta de próxima cita */}
+      {/* Tarjeta de próxima cita con posición en la cola */}
       <View style={[styles.card, { backgroundColor: colors.surface, shadowColor: colors.cardShadow }]}>
         <Text style={[styles.metricLabel, { color: colors.textSecondary }]}>Próxima consulta médica</Text>
 
@@ -508,6 +683,24 @@ export default function DashboardScreen() {
             <Text style={[styles.metricNote, { color: colors.textSecondary }]}>
               {nextAppointment.doctorName} {nextAppointment.reason ? `· ${nextAppointment.reason}` : ""}
             </Text>
+
+            {(() => {
+              const doctorApptsSameDay = appointmentsRange.filter(
+                (a) =>
+                  a.doctorName === nextAppointment.doctorName &&
+                  new Date(a.appointmentDate).toDateString() === new Date(nextAppointment.appointmentDate).toDateString()
+              );
+              const queue = new DoctorQueue(doctorApptsSameDay, 8);
+              const pos = queue.getPatientPosition(nextAppointment.id);
+
+              return pos > 0 ? (
+                <View style={[styles.badgeContainer, { backgroundColor: colors.background, borderColor: colors.primary }]}>
+                  <Text style={{ color: colors.primary, fontWeight: "700", fontSize: 13 }}>
+                    📍 Turno #{pos} en la cola de espera del médico
+                  </Text>
+                </View>
+              ) : null;
+            })()}
           </>
         ) : (
           <Text style={[styles.metricNote, { color: colors.textSecondary }]}>
@@ -516,65 +709,60 @@ export default function DashboardScreen() {
         )}
 
         <TouchableOpacity
-          style={[styles.actionButtonSecondary, { borderColor: colors.primary }]}
+          style={[styles.actionButtonSecondary, { borderColor: colors.primary, marginTop: 12 }]}
           onPress={() => setShowApptModal(true)}
         >
           <Text style={[styles.actionButtonSecondaryText, { color: colors.primary }]}>+ Agregar Cita</Text>
         </TouchableOpacity>
-      </View>
 
-      {/* Lista completa de citas (futuras + últimos 30 días) con check de asistencia */}
-      {appointmentsRange.length > 0 && (
-        <View style={[styles.card, { backgroundColor: colors.surface, shadowColor: colors.cardShadow }]}>
-          <Text style={[styles.metricLabel, { color: colors.textSecondary, marginBottom: 10 }]}>
-            Mis citas (últimos 30 días y próximas) — mantén presionada para eliminar
+        <TouchableOpacity
+          style={{ marginTop: 10, alignItems: "center", paddingVertical: 6 }}
+          onPress={() => navigation?.navigate?.("Historial")}
+        >
+          <Text style={{ color: colors.textSecondary, fontWeight: "600", fontSize: 13 }}>
+            Ver historial completo →
           </Text>
-          {appointmentsRange.map((appt) => {
-            const isPast = new Date(appt.appointmentDate) < new Date();
-            return (
-              <TouchableOpacity
-                key={appt.id}
-                style={[styles.appointmentRow, { borderColor: colors.border }]}
-                onPress={() => handleToggleAttended(appt.id, appt.attended)}
-                onLongPress={() => handleDeleteAppointment(appt.id, appt.attended)}
-                delayLongPress={400}
-              >
-                <View
-                  style={[
-                    styles.checkbox,
-                    { borderColor: colors.primary },
-                    appt.attended && { backgroundColor: colors.primary },
-                  ]}
-                >
-                  {appt.attended && <Text style={{ color: "#FFF", fontSize: 12, fontWeight: "700" }}>✓</Text>}
-                </View>
-                <View style={{ flex: 1 }}>
-                  <Text style={{ color: colors.textPrimary, fontWeight: "600" }}>
-                    {appt.doctorName} {appt.reason ? `· ${appt.reason}` : ""}
-                  </Text>
-                  <Text style={{ color: colors.textSecondary, fontSize: 12 }}>
-                    {new Date(appt.appointmentDate).toLocaleDateString()} ·{" "}
-                    {new Date(appt.appointmentDate).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
-                    {isPast && !appt.attended ? " · No asististe" : ""}
-                  </Text>
-                </View>
-              </TouchableOpacity>
-            );
-          })}
-        </View>
-      )}
-
-      {/* Tarjeta de síntomas (se queda igual, no es prioridad hoy) */}
-      <View style={[styles.card, { backgroundColor: colors.surface, shadowColor: colors.cardShadow }]}>
-        <Text style={[styles.metricLabel, { color: colors.textSecondary }]}>Monitoreo de síntomas (Este mes)</Text>
-        <Text style={[styles.metricValue, { color: colors.primary }]}>0 Alertas</Text>
-        <View style={[styles.progressBarBackground, { backgroundColor: colors.border }]}>
-          <View style={[styles.progressBarFill, { width: "0%", backgroundColor: colors.primary }]} />
-        </View>
-        <Text style={[styles.metricNote, { color: colors.textSecondary }]}>No has reportado malestares graves, ¡excelente!</Text>
+        </TouchableOpacity>
       </View>
 
-      {/* Fila pequeña (queda igual, no es prioridad hoy) */}
+      {/* Botón de emergencia */}
+      <TouchableOpacity
+        style={[styles.actionButton, { backgroundColor: sendingEmergency ? "#F87171" : "#DC2626" }]}
+        onPress={handleEmergencyAlert}
+        disabled={sendingEmergency}
+      >
+        <Text style={styles.actionButtonText}>
+          {sendingEmergency ? "Registrando..." : "🚨 Alerta de emergencia"}
+        </Text>
+      </TouchableOpacity>
+
+      {/* Tarjeta de síntomas */}
+<View style={[styles.card, { backgroundColor: colors.surface, shadowColor: colors.cardShadow }]}>
+  <Text style={[styles.metricLabel, { color: colors.textSecondary }]}>
+    Monitoreo de síntomas (Este mes)
+  </Text>
+  <Text style={[styles.metricValue, { color: colors.primary }]}>
+    {alertasDelMes} {alertasDelMes === 1 ? "Alerta" : "Alertas"}
+  </Text>
+  <View style={[styles.progressBarBackground, { backgroundColor: colors.border }]}>
+    <View
+      style={[
+        styles.progressBarFill,
+        {
+          // referencia visual: 5 alertas en el mes llena la barra
+          width: `${Math.min((alertasDelMes / 5) * 100, 100)}%`,
+          backgroundColor: alertasDelMes >= 3 ? "#DC2626" : colors.primary,
+        },
+      ]}
+    />
+  </View>
+  <Text style={[styles.metricNote, { color: colors.textSecondary }]}>
+    {alertasDelMes === 0
+      ? "No has reportado malestares graves, ¡excelente!"
+      : `Registraste ${alertasDelMes} ${alertasDelMes === 1 ? "alerta" : "alertas"} este mes. Coméntalo con tu médico en tu próxima consulta.`}
+  </Text>
+</View>
+      {/* Fila pequeña */}
       <View style={styles.row}>
         <View style={[styles.card, styles.cardSmall, { backgroundColor: colors.surface, shadowColor: colors.cardShadow }]}>
           <Text style={[styles.metricLabel, { color: colors.textSecondary }]}>Última Presión</Text>
@@ -623,60 +811,172 @@ export default function DashboardScreen() {
           setShowMedModal(false);
         }}
       >
-        <View style={styles.modalOverlay}>
-          <View style={[styles.modalCard, { backgroundColor: colors.surface }]}>
-            <Text style={[styles.modalTitle, { color: colors.textPrimary }]}>Nuevo medicamento</Text>
+        <KeyboardAvoidingView
+          style={styles.modalOverlay}
+          behavior={Platform.OS === "ios" ? "padding" : undefined}
+        >
+          <ScrollView contentContainerStyle={{ flexGrow: 1, justifyContent: "flex-end" }}>
+            <View style={[styles.modalCard, { backgroundColor: colors.surface }]}>
+              <Text style={[styles.modalTitle, { color: colors.textPrimary }]}>Nuevo medicamento 💊</Text>
 
-            <CustomInput
-              placeholder="Nombre del medicamento"
-              value={medName}
-              onChange={setMedName}
-            />
-            <CustomInput
-              placeholder="Dosis (ej: 1 tableta)"
-              value={medDosage}
-              onChange={setMedDosage}
-            />
+              <CustomInput
+                placeholder="Nombre del medicamento (ej: Paracetamol)"
+                value={medName}
+                onChange={setMedName}
+              />
+              <CustomInput
+                placeholder="Dosis (ej: 1 tableta / 500mg)"
+                value={medDosage}
+                onChange={setMedDosage}
+              />
 
-            <Text style={[styles.modalLabel, { color: colors.textSecondary }]}>Horarios</Text>
+              {/* Selector de modo de cálculo */}
+              <Text style={[styles.modalLabel, { color: colors.textSecondary }]}>Frecuencia de tomas</Text>
+              <View style={styles.tabContainer}>
+                <TouchableOpacity
+                  style={[styles.tabButton, freqType === "TIMES_PER_DAY" && { backgroundColor: colors.primary }]}
+                  onPress={() => setFreqType("TIMES_PER_DAY")}
+                >
+                  <Text style={[styles.tabText, freqType === "TIMES_PER_DAY" && styles.tabTextActive]}>Tomas/día</Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={[styles.tabButton, freqType === "INTERVAL" && { backgroundColor: colors.primary }]}
+                  onPress={() => setFreqType("INTERVAL")}
+                >
+                  <Text style={[styles.tabText, freqType === "INTERVAL" && styles.tabTextActive]}>Intervalo</Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={[styles.tabButton, freqType === "CUSTOM" && { backgroundColor: colors.primary }]}
+                  onPress={() => setFreqType("CUSTOM")}
+                >
+                  <Text style={[styles.tabText, freqType === "CUSTOM" && styles.tabTextActive]}>Manual</Text>
+                </TouchableOpacity>
+              </View>
 
-            <View style={styles.chipsContainer}>
-              {medSchedule.map((time) => (
-                <View key={time} style={[styles.chip, { backgroundColor: colors.background, borderColor: colors.primary }]}>
-                  <Text style={{ color: colors.primary, fontWeight: "600" }}>{formatTimeDisplay(time)}</Text>
-                  <TouchableOpacity onPress={() => handleRemoveTime(time)}>
-                    <Text style={{ color: colors.primary, marginLeft: 6, fontWeight: "700" }}>✕</Text>
+              {/* Controles para "Tomas al día" */}
+              {freqType === "TIMES_PER_DAY" && (
+                <View style={{ marginBottom: 12 }}>
+                  <Text style={[styles.modalLabel, { color: colors.textSecondary }]}>¿Cuántas veces al día?</Text>
+                  <View style={styles.chipsContainer}>
+                    {[1, 2, 3, 4].map((num) => (
+                      <TouchableOpacity
+                        key={num}
+                        style={[
+                          styles.optionChip,
+                          { borderColor: colors.primary },
+                          timesPerDay === num && { backgroundColor: colors.primary },
+                        ]}
+                        onPress={() => setTimesPerDay(num)}
+                      >
+                        <Text style={{ color: timesPerDay === num ? "#FFF" : colors.primary, fontWeight: "600" }}>
+                          {num} {num === 1 ? "toma" : "tomas"}
+                        </Text>
+                      </TouchableOpacity>
+                    ))}
+                  </View>
+                </View>
+              )}
+
+              {/* Controles para "Intervalo de horas" */}
+              {freqType === "INTERVAL" && (
+                <View style={{ marginBottom: 12 }}>
+                  <Text style={[styles.modalLabel, { color: colors.textSecondary }]}>¿Cada cuántas horas?</Text>
+                  <View style={styles.chipsContainer}>
+                    {[4, 6, 8, 12, 24].map((hrs) => (
+                      <TouchableOpacity
+                        key={hrs}
+                        style={[
+                          styles.optionChip,
+                          { borderColor: colors.primary },
+                          intervalHours === hrs && { backgroundColor: colors.primary },
+                        ]}
+                        onPress={() => setIntervalHours(hrs)}
+                      >
+                        <Text style={{ color: intervalHours === hrs ? "#FFF" : colors.primary, fontWeight: "600" }}>
+                          Cada {hrs} hrs
+                        </Text>
+                      </TouchableOpacity>
+                    ))}
+                  </View>
+                </View>
+              )}
+
+              {/* Selección de Hora Inicial para cálculo automático */}
+              {freqType !== "CUSTOM" && (
+                <View style={{ marginBottom: 12 }}>
+                  <Text style={[styles.modalLabel, { color: colors.textSecondary }]}>Hora de la primera toma</Text>
+                  <TouchableOpacity
+                    style={[styles.modalInput, { borderColor: colors.border, justifyContent: "center" }]}
+                    onPress={() => setShowStartTimePicker(true)}
+                  >
+                    <Text style={{ color: colors.textPrimary, fontWeight: "600" }}>
+                      ⏰ {formatTimeDisplay(startTime)}
+                    </Text>
                   </TouchableOpacity>
                 </View>
-              ))}
+              )}
+
+              {showStartTimePicker && (
+                <DateTimePicker
+                  value={parseTimeStringToDate(startTime)}
+                  mode="time"
+                  onChange={handleStartTimeChange}
+                />
+              )}
+
+              {/* Visualización de horarios calculados */}
+              <Text style={[styles.modalLabel, { color: colors.textSecondary }]}>Horarios resultantes</Text>
+              <View style={styles.chipsContainer}>
+                {computedSchedule.map((time) => (
+                  <View key={time} style={[styles.chip, { backgroundColor: colors.background, borderColor: colors.primary }]}>
+                    <Text style={{ color: colors.primary, fontWeight: "600" }}>{formatTimeDisplay(time)}</Text>
+                    {freqType === "CUSTOM" && (
+                      <TouchableOpacity onPress={() => handleRemoveCustomTime(time)}>
+                        <Text style={{ color: colors.primary, marginLeft: 6, fontWeight: "700" }}>✕</Text>
+                      </TouchableOpacity>
+                    )}
+                  </View>
+                ))}
+              </View>
+
+              {/* Opción para agregar horario manual cuando está en modo CUSTOM */}
+              {freqType === "CUSTOM" && (
+                <TouchableOpacity
+                  style={[styles.actionButtonSecondary, { borderColor: colors.primary }]}
+                  onPress={() => setShowTimePicker(true)}
+                >
+                  <Text style={[styles.actionButtonSecondaryText, { color: colors.primary }]}>+ Agregar horario</Text>
+                </TouchableOpacity>
+              )}
+
+              {showTimePicker && (
+                <DateTimePicker value={new Date()} mode="time" onChange={handleAddTimeToCustomSchedule} />
+              )}
+
+              <View
+                style={{ marginTop: 16, opacity: savingMed ? 0.6 : 1 }}
+                pointerEvents={savingMed ? "none" : "auto"}
+              >
+                <CustomButton
+                  title={savingMed ? "Guardando..." : "Guardar medicamento"}
+                  onPress={handleSaveMedication}
+                  variant="primary"
+                />
+              </View>
+
+              <TouchableOpacity
+                style={styles.modalCloseButton}
+                disabled={savingMed}
+                onPress={() => {
+                  resetMedModal();
+                  setShowMedModal(false);
+                }}
+              >
+                <Text style={{ color: colors.textSecondary }}>Cancelar</Text>
+              </TouchableOpacity>
             </View>
-
-            <TouchableOpacity
-              style={[styles.actionButtonSecondary, { borderColor: colors.primary }]}
-              onPress={() => setShowTimePicker(true)}
-            >
-              <Text style={[styles.actionButtonSecondaryText, { color: colors.primary }]}>+ Agregar horario</Text>
-            </TouchableOpacity>
-
-            {showTimePicker && (
-              <DateTimePicker value={new Date()} mode="time" onChange={handleAddTimeToSchedule} />
-            )}
-
-            <View style={{ marginTop: 16 }}>
-              <CustomButton title="Guardar medicamento" onPress={handleSaveMedication} variant="primary" />
-            </View>
-
-            <TouchableOpacity
-              style={styles.modalCloseButton}
-              onPress={() => {
-                resetMedModal();
-                setShowMedModal(false);
-              }}
-            >
-              <Text style={{ color: colors.textSecondary }}>Cancelar</Text>
-            </TouchableOpacity>
-          </View>
-        </View>
+          </ScrollView>
+        </KeyboardAvoidingView>
       </Modal>
 
       {/* ============== MODAL: Agregar Cita ============== */}
@@ -693,16 +993,49 @@ export default function DashboardScreen() {
           <View style={[styles.modalCard, { backgroundColor: colors.surface }]}>
             <Text style={[styles.modalTitle, { color: colors.textPrimary }]}>Nueva cita médica</Text>
 
-            <CustomInput
-              placeholder="Doctor o lugar"
-              value={apptDoctor}
-              onChange={setApptDoctor}
-            />
-            <CustomInput
-              placeholder="Motivo de la cita"
-              value={apptReason}
-              onChange={setApptReason}
-            />
+            <Text style={[styles.modalLabel, { color: colors.textSecondary }]}>Selecciona tu Médico</Text>
+            
+            <TouchableOpacity
+              style={[styles.dropdownButton, { borderColor: colors.border }]}
+              onPress={() => setShowDoctorDropdown(!showDoctorDropdown)}
+            >
+              <Text style={{ color: selectedDoctor ? colors.textPrimary : colors.textSecondary }}>
+                {selectedDoctor
+                  ? `${selectedDoctor.first_name} ${selectedDoctor.last_name} ${selectedDoctor.specialty ? `(${selectedDoctor.specialty})` : ''}`
+                  : "Selecciona un médico..."}
+              </Text>
+              <Text style={{ color: colors.textSecondary }}>{showDoctorDropdown ? "▲" : "▼"}</Text>
+            </TouchableOpacity>
+
+            {showDoctorDropdown && (
+              <View style={[styles.dropdownList, { borderColor: colors.border, backgroundColor: colors.surface }]}>
+                {doctorsList.map((doc) => (
+                  <TouchableOpacity
+                    key={doc.user_id}
+                    style={[styles.dropdownItem, { borderBottomColor: colors.border }]}
+                    onPress={() => {
+                      setSelectedDoctor(doc);
+                      setShowDoctorDropdown(false);
+                    }}
+                  >
+                    <Text style={{ color: colors.textPrimary, fontWeight: "600" }}>
+                      {doc.first_name} {doc.last_name}
+                    </Text>
+                    {doc.specialty && (
+                      <Text style={{ color: colors.textSecondary, fontSize: 12 }}>{doc.specialty}</Text>
+                    )}
+                  </TouchableOpacity>
+                ))}
+              </View>
+            )}
+
+            <View style={{ marginTop: 10 }}>
+              <CustomInput
+                placeholder="Motivo de la cita"
+                value={apptReason}
+                onChange={setApptReason}
+              />
+            </View>
 
             <Text style={[styles.modalLabel, { color: colors.textSecondary }]}>Fecha y hora</Text>
 
@@ -793,7 +1126,7 @@ const getStyles = (colors: any) =>
     actionButtonSecondaryText: { fontSize: 14, fontWeight: "600" },
 
     modalOverlay: { flex: 1, backgroundColor: "rgba(0,0,0,0.5)", justifyContent: "flex-end" },
-    modalCard: { borderTopLeftRadius: 24, borderTopRightRadius: 24, padding: 24, maxHeight: "85%" },
+    modalCard: { borderTopLeftRadius: 24, borderTopRightRadius: 24, padding: 24, maxHeight: "90%" },
     modalTitle: { fontSize: 18, fontWeight: "700", marginBottom: 16 },
     modalLabel: { fontSize: 13, fontWeight: "600", marginBottom: 8, marginTop: 4 },
     modalInput: { borderWidth: 1, borderRadius: 10, padding: 12, marginBottom: 12 },
@@ -801,7 +1134,19 @@ const getStyles = (colors: any) =>
     doseItem: { borderWidth: 1, borderRadius: 10, padding: 14, marginBottom: 10, flexDirection: "row", justifyContent: "space-between", alignItems: "center" },
     chipsContainer: { flexDirection: "row", flexWrap: "wrap", gap: 8, marginBottom: 10 },
     chip: { flexDirection: "row", alignItems: "center", borderWidth: 1.5, borderRadius: 20, paddingVertical: 6, paddingHorizontal: 12 },
+    optionChip: { borderWidth: 1.5, borderRadius: 20, paddingVertical: 6, paddingHorizontal: 12 },
     breakdownRow: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", paddingVertical: 10, borderBottomWidth: 1 },
     appointmentRow: { flexDirection: "row", alignItems: "center", gap: 12, paddingVertical: 10, borderBottomWidth: 1 },
     checkbox: { width: 24, height: 24, borderRadius: 6, borderWidth: 2, justifyContent: "center", alignItems: "center" },
+
+    dropdownButton: { borderWidth: 1, borderRadius: 10, padding: 14, flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginBottom: 6 },
+    dropdownList: { borderWidth: 1, borderRadius: 10, maxHeight: 160, overflow: "hidden", marginBottom: 10 },
+    dropdownItem: { padding: 12, borderBottomWidth: 1 },
+
+    badgeContainer: { marginTop: 8, paddingVertical: 8, paddingHorizontal: 12, borderRadius: 8, borderWidth: 1, alignSelf: "flex-start" },
+
+    tabContainer: { flexDirection: "row", backgroundColor: "rgba(0,0,0,0.05)", borderRadius: 10, padding: 4, marginBottom: 12 },
+    tabButton: { flex: 1, paddingVertical: 8, borderRadius: 8, alignItems: "center" },
+    tabText: { fontSize: 12, fontWeight: "600", color: "#666" },
+    tabTextActive: { color: "#FFFFFF" },
   });

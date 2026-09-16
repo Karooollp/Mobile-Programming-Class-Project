@@ -2,7 +2,7 @@ const API_KEY = process.env.EXPO_PUBLIC_GROQ_API_KEY;
 const API_URL = "https://api.groq.com/openai/v1/chat/completions";
 
 const MODELO_TEXTO = "openai/gpt-oss-20b";
-const MODELO_VISION = "qwen/qwen3.6-27b";
+const MODELO_VISION = "qwen/qwen3.8-27b";
 
 /**
  * Elimina caracteres de formato Markdown como **, __, #, ##, etc.
@@ -53,7 +53,13 @@ async function analizarImagenTecnica(imagenBase64: string, promptUsuario: string
     })
   });
 
-  if (!response.ok) throw new Error("Error analizando la imagen con el modelo de visión.");
+  if (!response.ok) {
+  const errorData = await response.json().catch(() => ({}));
+  console.error(`❌ Visión HTTP ${response.status}:`, JSON.stringify(errorData, null, 2));
+  throw new Error(
+    `Error ${response.status} en visión: ${errorData?.error?.message ?? "desconocido"}`
+  );
+}
 
   const data = await response.json();
   return data?.choices?.[0]?.message?.content || "";

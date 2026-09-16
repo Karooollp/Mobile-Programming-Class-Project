@@ -4,6 +4,7 @@ import { LoginScreen } from "../screens/LoginScreen";
 import RegisterScreen from "../screens/RegisterScreen";
 import ProfileScreen from "../screens/ProfileScreen";
 import EditProfileScreen from "../screens/EditProfileScreen";
+import HistorialScreen from "../screens/historialScreen";
 import { View, Text } from "react-native"; 
 import TabNavigator from "./TabNavigator";
 import DoctorTabNavigator from "./DoctorTabNavigator";
@@ -28,6 +29,7 @@ export type RootStackParamList = {
   Register: undefined;
   Profile: undefined;
   EditProfile: undefined;
+  Historial: undefined;
 };
 
 const Stack = createNativeStackNavigator<RootStackParamList>();
@@ -41,6 +43,7 @@ export default function StackNavigator() {
       <Stack.Screen name="DoctorTabs" component={DoctorTabNavigator} />
       <Stack.Screen name="Profile" component={ProfileScreen} />
       <Stack.Screen name="EditProfile" component={EditProfileScreen} />
+      <Stack.Screen name="Historial" component={HistorialScreen} />
     </Stack.Navigator>
   );
 }

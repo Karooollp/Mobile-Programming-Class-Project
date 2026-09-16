@@ -1,4 +1,24 @@
 import { Supabase } from "../lib/Supabase";
+import { ScheduleConfig } from "../utils/types/scheduleHelper";
+
+// schedule_times puede llegar de Supabase de dos formas distintas según cómo
+// esté tipada la columna: si es "jsonb" o "text[]" llega ya como array real;
+// si es "text" (guardando el JSON como texto plano), llega como string.
+// Esta función normaliza ambos casos a un array real, para que el resto de
+// la app (totales, progreso, dosis pendientes en el Dashboard) nunca reciba
+// algo que no sea un arreglo.
+function parseScheduleTimes(raw: unknown): string[] {
+  if (Array.isArray(raw)) return raw as string[];
+  if (typeof raw === "string") {
+    try {
+      const parsed = JSON.parse(raw);
+      return Array.isArray(parsed) ? parsed : [];
+    } catch {
+      return [];
+    }
+  }
+  return [];
+}
 
 // Trae todos los medicamentos ACTIVOS del usuario.
 export async function fetchMedications(userId: string) {
@@ -14,7 +34,7 @@ export async function fetchMedications(userId: string) {
     userId: med.user_id,
     name: med.name,
     dosage: med.dosage,
-    scheduleTimes: med.schedule_times as string[],
+    scheduleTimes: parseScheduleTimes(med.schedule_times),
   }));
 }
 
@@ -23,7 +43,8 @@ export async function addMedication(
   userId: string,
   name: string,
   dosage: string,
-  scheduleTimes: string[]
+  scheduleTimes: string[],
+  config?: ScheduleConfig
 ) {
   const { data, error } = await Supabase
     .from("medications")
@@ -33,6 +54,10 @@ export async function addMedication(
         name,
         dosage,
         schedule_times: scheduleTimes,
+        frequency_type: config?.type ?? "CUSTOM",
+        interval_hours: config?.intervalHours ?? null,
+        times_per_day: config?.timesPerDay ?? null,
+        start_time: config?.startTime ?? null,
       },
     ])
     .select()
@@ -75,7 +100,7 @@ export async function logMedicationTaken(
   return data;
 }
 
-// Elimina un log de toma de medicamento específico (una dosis ya registrada). Solo elimina el estado de "ya la tomé hoy",
+// Elimina un log de toma de medicamento específico
 export async function deleteMedicationLog(logId: string) {
   const { error } = await Supabase
     .from("medication_logs")
