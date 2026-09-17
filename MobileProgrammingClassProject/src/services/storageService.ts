@@ -1,31 +1,36 @@
-
 import { Supabase } from "../lib/Supabase";
 import * as DocumentPicker from "expo-document-picker";
-import {Alert} from "react-native";
+import * as FileSystem from "expo-file-system";
+import { decode } from "base64-arraybuffer";
+import { Alert } from "react-native";
+
+// Helper: lee cualquier archivo local y lo convierte a ArrayBuffer
+// (el formato que Supabase Storage necesita en vez de FormData)
+const uriToArrayBuffer = async (uri: string): Promise<ArrayBuffer> => {
+  const base64 = await FileSystem.readAsStringAsync(uri, {
+    encoding: FileSystem.EncodingType.Base64,
+  });
+  return decode(base64);
+};
 
 export const uploadImage = async (userId: string, imageUri: string) => {
   const fileName = `${userId}/profile.jpg`;
-  const formData = new FormData();
-  
-  formData.append("file", {
-    uri: imageUri,
-    name: fileName,
-    type: "image/jpeg",
-  } as any);
-  
+
+  const arrayBuffer = await uriToArrayBuffer(imageUri);
+
   const { error } = await Supabase.storage
     .from("profile-images")
-    .upload(fileName, formData, {
+    .upload(fileName, arrayBuffer, {
       contentType: "image/jpeg",
       upsert: true,
     });
-  
+
   if (error) throw error;
-  
+
   const { data } = Supabase.storage
     .from("profile-images")
     .getPublicUrl(fileName);
-  
+
   return data.publicUrl;
 };
 
@@ -33,43 +38,32 @@ export const uploadDocument = async (
   userId: string,
   file: DocumentPicker.DocumentPickerAsset
 ) => {
-  
-  
-  
   const isPdf =
     file.mimeType === "application/pdf" ||
-    file.name.toLowerCase().endsWith(".pdf")
-  
-  
+    file.name.toLowerCase().endsWith(".pdf");
+
   if (!isPdf) {
-    Alert.alert(
-      "Archivo no válido",
-      "Solo se permiten archivos PDF."
-    );
+    Alert.alert("Archivo no válido", "Solo se permiten archivos PDF.");
     return;
   }
+
   const fileName = `${userId}/medical-file.pdf`;
-  
-  const formData = new FormData();
-  
-  formData.append("file", {
-    uri: file.uri,
-    name: file.name,
-    type: file.mimeType || "application/pdf",
-  } as any);
-  
+  const contentType = file.mimeType || "application/pdf";
+
+  const arrayBuffer = await uriToArrayBuffer(file.uri);
+
   const { error } = await Supabase.storage
     .from("medical-files")
-    .upload(fileName, formData, {
-      contentType: file.mimeType || "application/pdf",
+    .upload(fileName, arrayBuffer, {
+      contentType,
       upsert: true,
     });
-  
+
   if (error) throw error;
-  
+
   const { data } = Supabase.storage
     .from("medical-files")
     .getPublicUrl(fileName);
-  
+
   return data.publicUrl;
 };

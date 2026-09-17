@@ -1,24 +1,5 @@
 import { createSlice, PayloadAction } from "@reduxjs/toolkit";
-
-export type UserProfile = {
-  user_id: string | null;
-  first_Name: string;
-  last_Name: string;
-  email: string;
-  status: "active" | "inactive" | "deleted" | "banned";
-  
-  // estos se completan en EDIT
-  age?: number | null;
-  gender?: string | null;
-  birthDate?: string | null;
-  photoUrl?: string | null;
-  birthCertificateUrl?: string | null;
-  phone?: string | null;
-  address?: string | null;
-  bloodType?: string | null;
-  emergencyContact?: string | null;
-  profileCompleted: boolean;
-};
+import { UserProfile } from "../../utils/types/Types";
 
 type UserProfileState = {
   data: UserProfile | null;
@@ -35,7 +16,7 @@ const userProfileSlice = createSlice({
     setProfile: (state, action: PayloadAction<UserProfile>) => {
       state.data = action.payload;
     },
-    
+
     updateProfile: (state, action: PayloadAction<Partial<UserProfile>>) => {
       if (!state.data) return;
       state.data = {
@@ -43,7 +24,7 @@ const userProfileSlice = createSlice({
         ...action.payload,
       };
     },
-    
+
     clearProfile: (state) => {
       state.data = null;
     },

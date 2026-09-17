@@ -60,12 +60,20 @@ export default function DoctorHomeScreen({ navigation }: any) {
         getAlertsForDoctor(id),
       ]);
 
-      setPacientes(listaPacientes as unknown as MiPaciente[]);
+      const listaTipada = listaPacientes as unknown as MiPaciente[];
+      setPacientes(listaTipada);
       setResumen(resumenData);
 
-      // Solo la próxima cita (la más cercana) por paciente.
+      // 🔒 Lista de IDs de MIS pacientes (los que de verdad me fueron asignados).
+      // La usamos como "lista de invitados": cualquier cita o alerta que no
+      // pertenezca a alguien de esta lista se descarta, sin importar lo que
+      // haya devuelto el backend.
+      const idsAsignados = new Set(listaTipada.map((p) => p.patient_id));
+
+      // Solo la próxima cita (la más cercana) por paciente, y solo de mis pacientes.
       const mapaCitas: Record<string, string> = {};
       for (const cita of citas as any[]) {
+        if (!idsAsignados.has(cita.user_id)) continue;
         if (!mapaCitas[cita.user_id]) {
           mapaCitas[cita.user_id] = new Date(cita.appointment_date).toLocaleString("es-HN", {
             day: "numeric",
@@ -77,9 +85,10 @@ export default function DoctorHomeScreen({ navigation }: any) {
       }
       setProximasCitas(mapaCitas);
 
-      // Solo la alerta más reciente por paciente.
+      // Solo la alerta más reciente por paciente, y solo de mis pacientes.
       const mapaAlertas: Record<string, string> = {};
       for (const alerta of alertas as any[]) {
+        if (!idsAsignados.has(alerta.user_id)) continue; // 👈 el fix: ignora alertas de pacientes que no son míos
         if (!mapaAlertas[alerta.user_id]) {
           mapaAlertas[alerta.user_id] = alerta.note ?? "Alerta de emergencia";
         }
