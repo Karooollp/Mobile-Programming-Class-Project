@@ -16,7 +16,9 @@ import {
 import { SafeAreaView } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
 import * as ImagePicker from "expo-image-picker";
+import type { RealtimeChannel } from "@supabase/supabase-js";
 import { preguntarAGroq } from "../lib/groqService";
+import { Supabase } from "../lib/Supabase";
 import CustomInput from "../components/CustomInput";
 import CustomButton from "../components/CustomButton";
 
@@ -26,10 +28,15 @@ import { useCaremapHealth } from "../contexts/CaremapHealthContexts";
 // Importación del servicio desacoplado para Supabase
 import { 
   crearSesionChat, 
+  getSesionActiva,
+  getMensajesDeSesion,
   guardarMensajeDB, 
   finalizarSesionConResumen, 
-  suscribirAMensajesDoctor 
+  suscribirAMensajesDeSesion,
+  desuscribirCanal,
+  ChatMessage,
 } from "../services/chatService";
+import { getAssignedDoctor } from "../services/doctorService";
 
 interface Mensaje {
   id: string;
@@ -39,11 +46,24 @@ interface Mensaje {
   mostrarBotonFinalizar?: boolean;
 }
 
+// Convierte un ChatMessage (fila de Supabase) al formato Mensaje que pinta la UI.
+function chatMessageAMensaje(msg: ChatMessage): Mensaje {
+  return {
+    id: msg.id ?? Date.now().toString(),
+    texto: msg.content ?? undefined,
+    imagenUrl: msg.image_url ?? undefined,
+    remitente: msg.sender_type === "patient" ? "usuario" : msg.sender_type,
+  };
+}
+
 export default function ChatScreen() {
   const { colors, isDarkMode } = useCaremapHealth();
 
-  // ID temporal del usuario hasta Auth global
-  const PACIENTE_ID_TEMP = "usr_paciente_123";
+  // ID real del usuario autenticado (antes era un string fijo "usr_paciente_123",
+  // lo cual rompía silenciosamente todos los inserts contra RLS).
+  const [pacienteId, setPacienteId] = useState<string | null>(null);
+  const [doctorAsignadoId, setDoctorAsignadoId] = useState<string | null>(null);
+  const [doctorAsignadoNombre, setDoctorAsignadoNombre] = useState<string | null>(null);
 
   // Estado de modo
   const [esModoDoctor, setEsModoDoctor] = useState(false);
@@ -72,28 +92,89 @@ export default function ChatScreen() {
 
   const [nuevoMensaje, setNuevoMensaje] = useState("");
   const [cargando, setCargando] = useState(false);
+  const [cargandoInicial, setCargandoInicial] = useState(true);
   const [imagenTemporal, setImagenTemporal] = useState<ImagePicker.ImagePickerAsset | null>(null);
   
   const flatListRef = useRef<FlatList>(null);
+  const canalDoctorRef = useRef<RealtimeChannel | null>(null);
 
   // Determinar qué lista de mensajes se muestra en pantalla
   const mensajesVisibles = esModoDoctor ? mensajesDoctor : mensajesIA;
 
-  // Inicializar sesiones
+  // ── Inicializar todo: usuario real, doctor asignado, y sesiones existentes ──
   useEffect(() => {
     const initChats = async () => {
-      const sesionIA = await crearSesionChat(PACIENTE_ID_TEMP, "ia");
-      if (sesionIA?.id) setSessionIdIA(sesionIA.id);
+      try {
+        setCargandoInicial(true);
 
-      const sesionDoc = await crearSesionChat(PACIENTE_ID_TEMP, "doctor");
-      if (sesionDoc?.id) {
+        // 1. Usuario real autenticado (reemplaza el ID hardcodeado)
+        const { data: authData, error: authError } = await Supabase.auth.getUser();
+        if (authError || !authData.user) {
+          Alert.alert("Sesión no válida", "Vuelve a iniciar sesión para usar el chat.");
+          return;
+        }
+        const miId = authData.user.id;
+        setPacienteId(miId);
+
+        // 2. ¿Tiene doctor asignado? (necesario para saber a qué sesión mandar
+        //    el resumen y para el modo Doctor en general)
+        const asignado = await getAssignedDoctor(miId);
+        if (asignado?.doctor_id) {
+          setDoctorAsignadoId(asignado.doctor_id);
+          const doc: any = asignado.doctor;
+          if (doc) setDoctorAsignadoNombre(`${doc.first_name} ${doc.last_name}`);
+        }
+
+        // 3. Reutilizar sesión IA activa si existe; si no, crear una.
+        let sesionIA = await getSesionActiva(miId, "ia");
+        if (!sesionIA) sesionIA = await crearSesionChat(miId, "ia");
+        setSessionIdIA(sesionIA.id);
+
+        const historialIA = await getMensajesDeSesion(sesionIA.id);
+        if (historialIA.length > 0) {
+          setMensajesIA(historialIA.map(chatMessageAMensaje));
+        }
+
+        // 4. Reutilizar sesión Doctor activa si existe; si no, crear una
+        //    (solo si ya hay doctor asignado; si no, se crea sin doctor_id
+        //    y se actualizará cuando se asigne uno).
+        let sesionDoc = await getSesionActiva(miId, "doctor");
+        if (!sesionDoc) {
+          sesionDoc = await crearSesionChat(miId, "doctor", asignado?.doctor_id ?? undefined);
+        }
         setSessionIdDoctor(sesionDoc.id);
-        suscribirAMensajesDoctor(sesionDoc.id, (nuevoMsg) => {
-          console.log("Mensaje entrante del médico:", nuevoMsg);
+
+        const historialDoctor = await getMensajesDeSesion(sesionDoc.id);
+        if (historialDoctor.length > 0) {
+          setMensajesDoctor(historialDoctor.map(chatMessageAMensaje));
+        }
+
+        // 5. Suscripción realtime: ahora SÍ actualiza el estado de React
+        //    cada vez que llega un mensaje nuevo (antes solo hacía console.log).
+              canalDoctorRef.current = suscribirAMensajesDeSesion(sesionDoc.id, (nuevoMsg) => {
+        if (nuevoMsg.sender_id === miId) return; // ya está en pantalla, lo agregamos al enviarlo
+        setMensajesDoctor((prev) => {
+          // Evita duplicar el mensaje si ya lo agregamos localmente al enviarlo.
+          if (prev.some((m) => m.id === nuevoMsg.id)) return prev;
+          return [...prev, chatMessageAMensaje(nuevoMsg)];
         });
+        hacerScrollAlFinal();
+      });
+      } catch (error) {
+        console.error("Error inicializando el chat:", error);
+        Alert.alert("Error", "No se pudo cargar el chat. Intenta de nuevo.");
+      } finally {
+        setCargandoInicial(false);
       }
     };
+
     initChats();
+
+    // Cleanup: sin esto, cada vez que se desmonta/monta la pantalla se
+    // acumula una suscripción más al mismo canal.
+    return () => {
+      desuscribirCanal(canalDoctorRef.current);
+    };
   }, []);
 
   const hacerScrollAlFinal = () => {
@@ -102,6 +183,7 @@ export default function ChatScreen() {
 
   // 1. Iniciar un nuevo chat en el modo activo
   const iniciarNuevoChat = () => {
+    if (!pacienteId) return;
     const titulo = esModoDoctor ? "Nuevo Chat con Doctor" : "Nuevo Chat con IA";
     Alert.alert(
       titulo,
@@ -112,8 +194,16 @@ export default function ChatScreen() {
           text: "Iniciar", 
           onPress: async () => {
             if (esModoDoctor) {
-              const nuevaSesion = await crearSesionChat(PACIENTE_ID_TEMP, "doctor");
-              if (nuevaSesion?.id) setSessionIdDoctor(nuevaSesion.id);
+              desuscribirCanal(canalDoctorRef.current);
+              const nuevaSesion = await crearSesionChat(pacienteId, "doctor", doctorAsignadoId ?? undefined);
+              setSessionIdDoctor(nuevaSesion.id);
+              canalDoctorRef.current = suscribirAMensajesDeSesion(nuevaSesion.id, (nuevoMsg) => {
+              if (nuevoMsg.sender_id === pacienteId) return; // no reagregar tu propio mensaje
+              setMensajesDoctor((prev) =>
+                prev.some((m) => m.id === nuevoMsg.id) ? prev : [...prev, chatMessageAMensaje(nuevoMsg)]
+              );
+              hacerScrollAlFinal();
+            });
 
               setMensajesDoctor([
                 { 
@@ -123,8 +213,8 @@ export default function ChatScreen() {
                 }
               ]);
             } else {
-              const nuevaSesion = await crearSesionChat(PACIENTE_ID_TEMP, "ia");
-              if (nuevaSesion?.id) setSessionIdIA(nuevaSesion.id);
+              const nuevaSesion = await crearSesionChat(pacienteId, "ia");
+              setSessionIdIA(nuevaSesion.id);
 
               setMensajesIA([
                 { 
@@ -143,12 +233,20 @@ export default function ChatScreen() {
 
   // 2. Alternar entre IA y Doctor (Solo cambia la vista sin alterar historiales)
   const toggleModoDoctor = (valor: boolean) => {
+    if (valor && !doctorAsignadoId) {
+      Alert.alert(
+        "Sin doctor asignado",
+        "Todavía no tienes un médico asignado. Cuando lo tengas, podrás escribirle aquí."
+      );
+      return;
+    }
     setEsModoDoctor(valor);
     hacerScrollAlFinal();
   };
 
-  // 3. Finalizar consulta de IA y enviar resumen
+  // 3. Finalizar consulta de IA y enviar resumen (también al chat del doctor)
   const finalizarYResumirConsulta = async () => {
+    if (!sessionIdIA || !pacienteId) return;
     try {
       setCargando(true);
       
@@ -157,15 +255,25 @@ export default function ChatScreen() {
       
       const resumenGenerado = await preguntarAGroq(promptResumen, mensajesIA);
 
-      if (sessionIdIA) {
-        await finalizarSesionConResumen(sessionIdIA, resumenGenerado);
+      // Ahora sí manda el resumen como mensaje persistente al chat del doctor
+      // (si ya hay sesión doctor), en vez de quedarse solo en el Alert.
+      await finalizarSesionConResumen(sessionIdIA, resumenGenerado, sessionIdDoctor ?? undefined);
+
+      if (sessionIdDoctor && doctorAsignadoId) {
+        Alert.alert(
+          "¡Consulta Finalizada! ✨",
+          "Se generó un resumen y se envió a tu médico. Lo verás también en la pestaña Doctor."
+        );
+      } else {
+        Alert.alert(
+          "¡Consulta Finalizada! ✨",
+          `Resumen generado (aún no tienes doctor asignado, así que por ahora solo queda guardado):\n\n${resumenGenerado}`
+        );
       }
 
-      Alert.alert("¡Consulta Finalizada! ✨", `Resumen generado para el doctor:\n\n${resumenGenerado}`);
-
       // Reiniciar chat de IA tras finalizar
-      const nuevaSesion = await crearSesionChat(PACIENTE_ID_TEMP, "ia");
-      if (nuevaSesion?.id) setSessionIdIA(nuevaSesion.id);
+      const nuevaSesion = await crearSesionChat(pacienteId, "ia");
+      setSessionIdIA(nuevaSesion.id);
 
       setMensajesIA([
         { 
@@ -176,6 +284,7 @@ export default function ChatScreen() {
         }
       ]);
     } catch (error) {
+      console.error("Error al finalizar y resumir:", error);
       Alert.alert("Error", "No se pudo generar el resumen en este momento.");
     } finally {
       setCargando(false);
@@ -227,7 +336,7 @@ export default function ChatScreen() {
   const enviarMensaje = async () => {
     const textoUsuario = nuevoMensaje.trim();
     if (!textoUsuario && !imagenTemporal) return;
-    if (cargando) return;
+    if (cargando || !pacienteId) return;
 
     const nuevoMensajeUsuario: Mensaje = {
       id: Date.now().toString(),
@@ -246,12 +355,18 @@ export default function ChatScreen() {
       setMensajesDoctor((prev) => [...prev, nuevoMensajeUsuario]);
 
       if (sessionIdDoctor) {
-        guardarMensajeDB({
-          session_id: sessionIdDoctor,
-          sender_type: "patient",
-          content: textoUsuario,
-          image_url: fotoParaEnviar?.uri
-        });
+        try {
+          await guardarMensajeDB({
+            session_id: sessionIdDoctor,
+            sender_type: "patient",
+            sender_id: pacienteId,
+            content: textoUsuario,
+            image_url: fotoParaEnviar?.uri
+          });
+        } catch (error) {
+          console.error("Error guardando mensaje al doctor:", error);
+          Alert.alert("Error", "No se pudo enviar el mensaje. Intenta de nuevo.");
+        }
       }
 
       setCargando(false);
@@ -267,9 +382,10 @@ export default function ChatScreen() {
       guardarMensajeDB({
         session_id: sessionIdIA,
         sender_type: "patient",
+        sender_id: pacienteId,
         content: textoUsuario,
         image_url: fotoParaEnviar?.uri
-      });
+      }).catch((error) => console.error("Error guardando mensaje IA:", error));
     }
 
     hacerScrollAlFinal();
@@ -300,7 +416,7 @@ export default function ChatScreen() {
           session_id: sessionIdIA,
           sender_type: "ia",
           content: respuestaIA
-        });
+        }).catch((error) => console.error("Error guardando respuesta IA:", error));
       }
 
     } catch (error) {
@@ -310,6 +426,14 @@ export default function ChatScreen() {
       hacerScrollAlFinal();
     }
   };
+
+  if (cargandoInicial) {
+    return (
+      <SafeAreaView style={[styles.container, styles.centrado, { backgroundColor: colors.background }]}>
+        <ActivityIndicator size="large" color={colors.primary} />
+      </SafeAreaView>
+    );
+  }
 
   return (
     <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]} edges={["top"]}>
@@ -324,7 +448,9 @@ export default function ChatScreen() {
             trackColor={{ false: colors.border, true: colors.primary }}
             thumbColor={isDarkMode ? colors.surface : "#FFF"}
           />
-          <Text style={[styles.switchLabel, { color: esModoDoctor ? colors.primary : colors.textSecondary }]}>Doctor</Text>
+          <Text style={[styles.switchLabel, { color: esModoDoctor ? colors.primary : colors.textSecondary }]}>
+            {doctorAsignadoNombre ? `Dr(a). ${doctorAsignadoNombre.split(" ")[0]}` : "Doctor"}
+          </Text>
         </View>
 
         <TouchableOpacity style={styles.newChatButton} onPress={iniciarNuevoChat}>
@@ -420,6 +546,7 @@ export default function ChatScreen() {
 
 const styles = StyleSheet.create({
   container: { flex: 1 },
+  centrado: { justifyContent: "center", alignItems: "center" },
   
   navbar: {
     flexDirection: "row",

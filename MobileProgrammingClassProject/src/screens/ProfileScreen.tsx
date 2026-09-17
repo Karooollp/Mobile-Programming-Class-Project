@@ -7,6 +7,7 @@ import CustomButton from "../components/CustomButton";
 import { useAppSelector } from "../store/hooks";
 
 export default function ProfileScreen({ navigation }: any) {
+  const DOCTOR_ROLE_ID = "3639b033-377c-496f-8cc9-bf6c70d5ccc0";
   const { isDarkMode, toggleTheme } = useCaremapHealth();
   const sharedStyles = useSharedStyles();
 
@@ -19,6 +20,7 @@ export default function ProfileScreen({ navigation }: any) {
       </View>
     );
   }
+  
 
   return (
     <CardProfile

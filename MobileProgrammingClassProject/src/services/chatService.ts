@@ -1,6 +1,6 @@
 // services/chatService.ts
-// Descomentar cuando tengas importado tu cliente:
-// import { supabase } from "../lib/supabaseClient";
+import { Supabase } from "../lib/Supabase";
+import type { RealtimeChannel } from "@supabase/supabase-js";
 
 export interface ChatSession {
   id?: string;
@@ -18,68 +18,117 @@ export interface ChatMessage {
   sender_id?: string;
   content?: string;
   image_url?: string;
+  created_at?: string;
 }
 
 // 1. Crear una nueva sesión de chat (IA o Doctor)
-export const crearSesionChat = async (patientId: string, type: "ia" | "doctor") => {
-  /* AL CONECTAR SUPABASE:
-  const { data, error } = await supabase
-    .from('chat_sessions')
-    .insert([{ patient_id: patientId, type, status: 'active' }])
+export const crearSesionChat = async (
+  patientId: string,
+  type: "ia" | "doctor",
+  doctorId?: string
+) => {
+  const { data, error } = await Supabase
+    .from("chat_sessions")
+    .insert([{ patient_id: patientId, type, doctor_id: doctorId ?? null, status: "active" }])
     .select()
     .single();
 
   if (error) throw error;
   return data;
-  */
-  console.log(`[STUB] Sesión creada tipo (${type}) para paciente:`, patientId);
-  return { id: "mocked-session-id-" + Date.now() };
+};
+
+// Trae la sesión activa de un tipo para un paciente, o null si no hay.
+// Útil para no crear una sesión nueva cada vez que se abre el chat.
+export const getSesionActiva = async (
+  patientId: string,
+  type: "ia" | "doctor"
+) => {
+  const { data, error } = await Supabase
+    .from("chat_sessions")
+    .select("*")
+    .eq("patient_id", patientId)
+    .eq("type", type)
+    .eq("status", "active")
+    .order("created_at", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+
+  if (error) throw error;
+  return data;
+};
+
+// Trae el historial de mensajes de una sesión (para pintar el chat al entrar).
+export const getMensajesDeSesion = async (sessionId: string) => {
+  const { data, error } = await Supabase
+    .from("chat_messages")
+    .select("*")
+    .eq("session_id", sessionId)
+    .order("created_at", { ascending: true });
+
+  if (error) throw error;
+  return data;
 };
 
 // 2. Guardar un mensaje individual en la BD
 export const guardarMensajeDB = async (mensaje: ChatMessage) => {
-  /* AL CONECTAR SUPABASE:
-  const { data, error } = await supabase
-    .from('chat_messages')
+  const { data, error } = await Supabase
+    .from("chat_messages")
     .insert([mensaje])
     .select()
     .single();
 
   if (error) throw error;
   return data;
-  */
-  console.log("[STUB] Mensaje listo para guardarse en BD:", mensaje);
-  return { ...mensaje, id: Date.now().toString() };
 };
 
-// 3. Finalizar consulta y guardar el resumen de Groq
-export const finalizarSesionConResumen = async (sessionId: string, resumen: string) => {
-  /* AL CONECTAR SUPABASE:
-  const { data, error } = await supabase
-    .from('chat_sessions')
-    .update({ status: 'finished', summary: resumen, updated_at: new Date() })
-    .eq('id', sessionId)
+// 3. Finalizar consulta IA, guardar el resumen, y mandarlo también al chat
+//    del doctor (Opción B) para que quede persistente y no solo en un Alert.
+//    sessionIdDoctor es opcional: si el paciente todavía no tiene sesión con
+//    un doctor asignado, el resumen queda solo en chat_sessions.summary y se
+//    reenvía cuando exista sesión (o el doctor lo lee ahí directamente).
+export const finalizarSesionConResumen = async (
+  sessionIdIA: string,
+  resumen: string,
+  sessionIdDoctor?: string | null
+) => {
+  const { data, error } = await Supabase
+    .from("chat_sessions")
+    .update({ status: "finished", summary: resumen, updated_at: new Date().toISOString() })
+    .eq("id", sessionIdIA)
     .select()
     .single();
 
   if (error) throw error;
+
+  if (sessionIdDoctor) {
+    await guardarMensajeDB({
+      session_id: sessionIdDoctor,
+      sender_type: "ia",
+      content: `📋 Resumen automático de la consulta con IA:\n\n${resumen}`,
+    });
+  }
+
   return data;
-  */
-  console.log("[STUB] Sesión finalizada en BD con ID:", sessionId);
-  console.log("[STUB] Resumen registrado:", resumen);
-  return true;
 };
 
-// 4. PREPARADO PARA EL FUTURO: Escuchar mensajes en tiempo real (Doctor)
-export const suscribirAMensajesDoctor = (sessionId: string, onNuevoMensaje: (msg: ChatMessage) => void) => {
-  console.log("[STUB] Suscripción Realtime lista para la sesión:", sessionId);
-  
-  /* AL CONECTAR SUPABASE (Cuando la vista del médico esté lista):
-  const channel = supabase
-    .channel(`chat_${sessionId}`)
+// 4. Suscripción realtime a mensajes nuevos de una sesión.
+//    CORREGIDO: antes solo hacía console.log del mensaje entrante y nunca
+//    actualizaba el estado de React. Ahora recibe un callback que el
+//    componente pasa (normalmente algo como setMensajes(prev => [...prev, msg]))
+//    y sí se ejecuta con cada INSERT nuevo.
+export const suscribirAMensajesDeSesion = (
+  sessionId: string,
+  onNuevoMensaje: (msg: ChatMessage) => void
+): RealtimeChannel => {
+  const channel = Supabase.channel(`chat_${sessionId}`)
     .on(
-      'postgres_changes',
-      { event: 'INSERT', schema: 'public', table: 'chat_messages', filter: `session_id=eq.${sessionId}` },
+      "postgres_changes",
+      {
+        event: "INSERT",
+        schema: "public",
+        table: "chat_messages",
+        filter: `session_id=eq.${sessionId}`,
+      },
       (payload) => {
         onNuevoMensaje(payload.new as ChatMessage);
       }
@@ -87,6 +136,12 @@ export const suscribirAMensajesDoctor = (sessionId: string, onNuevoMensaje: (msg
     .subscribe();
 
   return channel;
-  */
-  return null;
+};
+
+// Siempre desuscribirse al desmontar la pantalla de chat (useEffect cleanup),
+// o los canales se van acumulando entre navegaciones.
+export const desuscribirCanal = (channel: RealtimeChannel | null) => {
+  if (channel) {
+    Supabase.removeChannel(channel);
+  }
 };

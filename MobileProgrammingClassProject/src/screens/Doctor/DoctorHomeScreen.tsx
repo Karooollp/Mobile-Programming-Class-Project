@@ -1,5 +1,4 @@
-
-import React, { useMemo, useState } from "react";
+import React, { useEffect, useMemo, useState, useCallback } from "react";
 import {
   View,
   Text,
@@ -8,87 +7,134 @@ import {
   TouchableOpacity,
   TextInput,
   SafeAreaView,
+  ActivityIndicator,
+  RefreshControl,
+  Alert,
 } from "react-native";
+import { Supabase } from "../../lib/Supabase";
+import {
+  getMyPatients,
+  getDoctorDashboardSummary,
+  getAlertsForDoctor,
+  getUpcomingAppointmentsForDoctor,
+} from "../../services/doctorService";
 
-type Patient = {
-  id: string;
-  name: string;
-  age: number;
-  bloodType: string;
-  status: "Estable" | "Requiere atención" | "Crítico";
-  pressure: string;
-  heartRate: number;
-  nextAppointment: string;
-  alert?: string;
+type MiPaciente = {
+  patient_id: string;
+  patient: {
+    user_id: string;
+    first_name: string;
+    last_name: string;
+    age: number | null;
+    blood_type: string | null;
+    photo_url: string | null;
+  };
 };
 
-const PATIENTS: Patient[] = [
-  {
-    id: "patient-001",
-    name: "María López",
-    age: 68,
-    bloodType: "O+",
-    status: "Estable",
-    pressure: "120/80",
-    heartRate: 72,
-    nextAppointment: "10 de septiembre · 9:00 AM",
-  },
-  {
-    id: "patient-002",
-    name: "Juan Martínez",
-    age: 54,
-    bloodType: "A+",
-    status: "Requiere atención",
-    pressure: "145/92",
-    heartRate: 86,
-    nextAppointment: "11 de septiembre · 10:30 AM",
-    alert: "Presión arterial elevada",
-  },
-  {
-    id: "patient-003",
-    name: "Ana Hernández",
-    age: 42,
-    bloodType: "B+",
-    status: "Estable",
-    pressure: "118/76",
-    heartRate: 69,
-    nextAppointment: "13 de septiembre · 8:00 AM",
-  },
-];
+type Resumen = {
+  totalPatients: number;
+  todayAppointments: number;
+  totalAlerts: number;
+};
 
 export default function DoctorHomeScreen({ navigation }: any) {
+  const [doctorId, setDoctorId] = useState<string | null>(null);
+  const [pacientes, setPacientes] = useState<MiPaciente[]>([]);
+  const [resumen, setResumen] = useState<Resumen>({ totalPatients: 0, todayAppointments: 0, totalAlerts: 0 });
+
+  // patient_id -> texto de próxima cita
+  const [proximasCitas, setProximasCitas] = useState<Record<string, string>>({});
+  // patient_id -> nota de alerta más reciente (si la hay)
+  const [alertasPorPaciente, setAlertasPorPaciente] = useState<Record<string, string>>({});
+
+  const [cargando, setCargando] = useState(true);
+  const [refrescando, setRefrescando] = useState(false);
   const [search, setSearch] = useState("");
+
+  const cargarTodo = useCallback(async (id: string) => {
+    try {
+      const [listaPacientes, resumenData, citas, alertas] = await Promise.all([
+        getMyPatients(id),
+        getDoctorDashboardSummary(id),
+        getUpcomingAppointmentsForDoctor(id),
+        getAlertsForDoctor(id),
+      ]);
+
+      setPacientes(listaPacientes as unknown as MiPaciente[]);
+      setResumen(resumenData);
+
+      // Solo la próxima cita (la más cercana) por paciente.
+      const mapaCitas: Record<string, string> = {};
+      for (const cita of citas as any[]) {
+        if (!mapaCitas[cita.user_id]) {
+          mapaCitas[cita.user_id] = new Date(cita.appointment_date).toLocaleString("es-HN", {
+            day: "numeric",
+            month: "long",
+            hour: "numeric",
+            minute: "2-digit",
+          });
+        }
+      }
+      setProximasCitas(mapaCitas);
+
+      // Solo la alerta más reciente por paciente.
+      const mapaAlertas: Record<string, string> = {};
+      for (const alerta of alertas as any[]) {
+        if (!mapaAlertas[alerta.user_id]) {
+          mapaAlertas[alerta.user_id] = alerta.note ?? "Alerta de emergencia";
+        }
+      }
+      setAlertasPorPaciente(mapaAlertas);
+    } catch (error) {
+      console.error("Error cargando dashboard del doctor:", error);
+      Alert.alert("Error", "No se pudo cargar la información del panel.");
+    }
+  }, []);
+
+  useEffect(() => {
+    const init = async () => {
+      const { data, error } = await Supabase.auth.getUser();
+      if (error || !data.user) {
+        Alert.alert("Sesión no válida", "Vuelve a iniciar sesión.");
+        return;
+      }
+      setDoctorId(data.user.id);
+      await cargarTodo(data.user.id);
+      setCargando(false);
+    };
+    init();
+  }, [cargarTodo]);
+
+  const onRefresh = async () => {
+    if (!doctorId) return;
+    setRefrescando(true);
+    await cargarTodo(doctorId);
+    setRefrescando(false);
+  };
 
   const filteredPatients = useMemo(() => {
     const text = search.trim().toLowerCase();
+    if (!text) return pacientes;
+    return pacientes.filter((p) => {
+      const nombre = `${p.patient.first_name} ${p.patient.last_name}`.toLowerCase();
+      return nombre.includes(text);
+    });
+  }, [search, pacientes]);
 
-    if (!text) return PATIENTS;
-
-    return PATIENTS.filter(
-      (patient) =>
-        patient.name.toLowerCase().includes(text) ||
-        patient.id.toLowerCase().includes(text)
+  if (cargando) {
+    return (
+      <SafeAreaView style={[styles.safeArea, styles.centrado]}>
+        <ActivityIndicator size="large" color="#1E88E5" />
+      </SafeAreaView>
     );
-  }, [search]);
-
-  const getStatusStyle = (status: Patient["status"]) => {
-    switch (status) {
-      case "Crítico":
-        return styles.statusCritical;
-
-      case "Requiere atención":
-        return styles.statusWarning;
-
-      default:
-        return styles.statusStable;
-    }
-  };
+  }
 
   return (
     <SafeAreaView style={styles.safeArea}>
       <ScrollView
         showsVerticalScrollIndicator={false}
         contentContainerStyle={styles.container}
+        refreshControl={<RefreshControl refreshing={refrescando} onRefresh={onRefresh} />}
       >
         {/* HEADER */}
         <View style={styles.header}>
@@ -99,7 +145,7 @@ export default function DoctorHomeScreen({ navigation }: any) {
 
           <TouchableOpacity
             style={styles.notificationButton}
-            onPress={() => navigation?.navigate?.("DoctorNotifications")}
+            onPress={() => navigation?.navigate?.("Alertas")}
           >
             <Text style={styles.notificationIcon}>🔔</Text>
           </TouchableOpacity>
@@ -109,13 +155,11 @@ export default function DoctorHomeScreen({ navigation }: any) {
         <View style={styles.summaryCard}>
           <View>
             <Text style={styles.summaryTitle}>Resumen de pacientes</Text>
-            <Text style={styles.summarySubtitle}>
-              Información general de tu consulta
-            </Text>
+            <Text style={styles.summarySubtitle}>Información general de tu consulta</Text>
           </View>
 
           <View style={styles.summaryNumberContainer}>
-            <Text style={styles.summaryNumber}>{PATIENTS.length}</Text>
+            <Text style={styles.summaryNumber}>{resumen.totalPatients}</Text>
             <Text style={styles.summaryLabel}>Pacientes</Text>
           </View>
         </View>
@@ -124,19 +168,19 @@ export default function DoctorHomeScreen({ navigation }: any) {
         <View style={styles.statsRow}>
           <View style={styles.statCard}>
             <Text style={styles.statIcon}>👥</Text>
-            <Text style={styles.statNumber}>{PATIENTS.length}</Text>
+            <Text style={styles.statNumber}>{resumen.totalPatients}</Text>
             <Text style={styles.statLabel}>Pacientes</Text>
           </View>
 
           <View style={styles.statCard}>
             <Text style={styles.statIcon}>📅</Text>
-            <Text style={styles.statNumber}>3</Text>
+            <Text style={styles.statNumber}>{resumen.todayAppointments}</Text>
             <Text style={styles.statLabel}>Citas hoy</Text>
           </View>
 
           <View style={styles.statCard}>
             <Text style={styles.statIcon}>🚨</Text>
-            <Text style={styles.statNumber}>1</Text>
+            <Text style={styles.statNumber}>{resumen.totalAlerts}</Text>
             <Text style={styles.statLabel}>Alertas</Text>
           </View>
         </View>
@@ -144,14 +188,11 @@ export default function DoctorHomeScreen({ navigation }: any) {
         {/* BUSCADOR */}
         <View style={styles.sectionHeader}>
           <Text style={styles.sectionTitle}>Mis pacientes</Text>
-          <Text style={styles.patientCount}>
-            {filteredPatients.length}
-          </Text>
+          <Text style={styles.patientCount}>{filteredPatients.length}</Text>
         </View>
 
         <View style={styles.searchContainer}>
           <Text style={styles.searchIcon}>🔎</Text>
-
           <TextInput
             value={search}
             onChangeText={setSearch}
@@ -162,136 +203,97 @@ export default function DoctorHomeScreen({ navigation }: any) {
         </View>
 
         {/* LISTA DE PACIENTES */}
-        {filteredPatients.map((patient) => (
-          <TouchableOpacity
-            key={patient.id}
-            style={styles.patientCard}
-            activeOpacity={0.8}
-            onPress={() =>
-              navigation?.navigate?.("DoctorPatientProfile", {
-                patientId: patient.id,
-              })
-            }
-          >
-            <View style={styles.patientTop}>
-              <View style={styles.avatar}>
-                <Text style={styles.avatarText}>
-                  {patient.name.charAt(0)}
-                </Text>
-              </View>
+        {filteredPatients.map(({ patient_id, patient }) => {
+          const alerta = alertasPorPaciente[patient_id];
+          const proximaCita = proximasCitas[patient_id];
 
-              <View style={styles.patientInfo}>
-                <Text style={styles.patientName}>{patient.name}</Text>
+          return (
+            <TouchableOpacity
+              key={patient_id}
+              style={styles.patientCard}
+              activeOpacity={0.8}
+              onPress={() => navigation?.navigate?.("DoctorPatientProfile", { patientId: patient_id })}
+            >
+              <View style={styles.patientTop}>
+                <View style={styles.avatar}>
+                  <Text style={styles.avatarText}>{patient.first_name.charAt(0)}</Text>
+                </View>
 
-                <Text style={styles.patientDetails}>
-                  {patient.age} años · {patient.bloodType}
-                </Text>
-              </View>
-
-              <View
-                style={[
-                  styles.statusBadge,
-                  getStatusStyle(patient.status),
-                ]}
-              >
-                <Text style={styles.statusText}>
-                  {patient.status}
-                </Text>
-              </View>
-            </View>
-
-            <View style={styles.divider} />
-
-            <View style={styles.patientMetrics}>
-              <View style={styles.metric}>
-                <Text style={styles.metricLabel}>Presión</Text>
-                <Text style={styles.metricValue}>
-                  {patient.pressure}
-                </Text>
-              </View>
-
-              <View style={styles.metric}>
-                <Text style={styles.metricLabel}>❤️ Pulso</Text>
-                <Text style={styles.metricValue}>
-                  {patient.heartRate} BPM
-                </Text>
-              </View>
-
-              <View style={styles.metric}>
-                <Text style={styles.metricLabel}>📅 Próxima cita</Text>
-                <Text style={styles.appointmentText}>
-                  {patient.nextAppointment}
-                </Text>
-              </View>
-            </View>
-
-            {patient.alert && (
-              <View style={styles.alertBox}>
-                <Text style={styles.alertIcon}>⚠️</Text>
-
-                <View style={{ flex: 1 }}>
-                  <Text style={styles.alertTitle}>Alerta</Text>
-                  <Text style={styles.alertText}>
-                    {patient.alert}
+                <View style={styles.patientInfo}>
+                  <Text style={styles.patientName}>
+                    {patient.first_name} {patient.last_name}
+                  </Text>
+                  <Text style={styles.patientDetails}>
+                    {patient.age != null ? `${patient.age} años` : "Edad no registrada"}
+                    {patient.blood_type ? ` · ${patient.blood_type}` : ""}
                   </Text>
                 </View>
-              </View>
-            )}
 
-            <View style={styles.viewProfile}>
-              <Text style={styles.viewProfileText}>
-                Ver expediente médico →
-              </Text>
-            </View>
-          </TouchableOpacity>
-        ))}
+                <View style={[styles.statusBadge, alerta ? styles.statusWarning : styles.statusStable]}>
+                  <Text style={styles.statusText}>{alerta ? "Requiere atención" : "Estable"}</Text>
+                </View>
+              </View>
+
+              <View style={styles.divider} />
+
+              <View style={styles.patientMetrics}>
+                <View style={styles.metric}>
+                  <Text style={styles.metricLabel}>📅 Próxima cita</Text>
+                  <Text style={styles.appointmentText}>{proximaCita ?? "Sin cita programada"}</Text>
+                </View>
+              </View>
+
+              {alerta && (
+                <View style={styles.alertBox}>
+                  <Text style={styles.alertIcon}>⚠️</Text>
+                  <View style={{ flex: 1 }}>
+                    <Text style={styles.alertTitle}>Alerta</Text>
+                    <Text style={styles.alertText}>{alerta}</Text>
+                  </View>
+                </View>
+              )}
+
+              <View style={styles.viewProfile}>
+                <Text style={styles.viewProfileText}>Ver expediente médico →</Text>
+              </View>
+            </TouchableOpacity>
+          );
+        })}
 
         {filteredPatients.length === 0 && (
           <View style={styles.emptyContainer}>
             <Text style={styles.emptyIcon}>🔎</Text>
             <Text style={styles.emptyTitle}>
-              No se encontraron pacientes
+              {pacientes.length === 0 ? "Aún no tienes pacientes asignados" : "No se encontraron pacientes"}
             </Text>
             <Text style={styles.emptyText}>
-              Intenta buscar utilizando otro nombre o ID.
+              {pacientes.length === 0
+                ? "Ve a la pestaña Pacientes para asignarte tu primer paciente."
+                : "Intenta buscar utilizando otro nombre."}
             </Text>
           </View>
         )}
 
         {/* ACCIONES RÁPIDAS */}
-        <Text style={[styles.sectionTitle, { marginTop: 24 }]}>
-          Acciones rápidas
-        </Text>
+        <Text style={[styles.sectionTitle, { marginTop: 24 }]}>Acciones rápidas</Text>
 
         <View style={styles.quickActions}>
-          <TouchableOpacity
-            style={styles.quickAction}
-            onPress={() => navigation?.navigate?.("DoctorAppointments")}
-          >
+          <TouchableOpacity style={styles.quickAction} onPress={() => navigation?.navigate?.("Citas")}>
             <Text style={styles.quickIcon}>📅</Text>
             <Text style={styles.quickText}>Citas</Text>
           </TouchableOpacity>
 
-          <TouchableOpacity
-            style={styles.quickAction}
-            onPress={() => navigation?.navigate?.("DoctorAlerts")}
-          >
+          <TouchableOpacity style={styles.quickAction} onPress={() => navigation?.navigate?.("Alertas")}>
             <Text style={styles.quickIcon}>🚨</Text>
             <Text style={styles.quickText}>Alertas</Text>
           </TouchableOpacity>
 
-          <TouchableOpacity
-            style={styles.quickAction}
-            onPress={() => navigation?.navigate?.("DoctorPatients")}
-          >
+          <TouchableOpacity style={styles.quickAction} onPress={() => navigation?.navigate?.("Pacientes")}>
             <Text style={styles.quickIcon}>👥</Text>
             <Text style={styles.quickText}>Pacientes</Text>
           </TouchableOpacity>
 
-          <TouchableOpacity
-            style={styles.quickAction}
-            onPress={() => navigation?.navigate?.("DoctorProfile")}
-          >
+          <TouchableOpacity style={styles.quickAction} onPress={() => navigation?.navigate?.("Perfil")}>
             <Text style={styles.quickIcon}>👨‍⚕️</Text>
             <Text style={styles.quickText}>Mi perfil</Text>
           </TouchableOpacity>
@@ -302,352 +304,59 @@ export default function DoctorHomeScreen({ navigation }: any) {
 }
 
 const styles = StyleSheet.create({
-  safeArea: {
-    flex: 1,
-    backgroundColor: "#F5F7FA",
-  },
-
-  container: {
-    padding: 20,
-    paddingBottom: 40,
-  },
-
-  header: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-    marginBottom: 22,
-  },
-
-  welcome: {
-    fontSize: 14,
-    color: "#68707A",
-    marginBottom: 4,
-  },
-
-  doctorName: {
-    fontSize: 26,
-    fontWeight: "800",
-    color: "#18202A",
-  },
-
-  notificationButton: {
-    width: 46,
-    height: 46,
-    borderRadius: 23,
-    backgroundColor: "#FFFFFF",
-    alignItems: "center",
-    justifyContent: "center",
-    elevation: 2,
-  },
-
-  notificationIcon: {
-    fontSize: 21,
-  },
-
-  summaryCard: {
-    backgroundColor: "#1E88E5",
-    borderRadius: 22,
-    padding: 20,
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
-    marginBottom: 16,
-  },
-
-  summaryTitle: {
-    color: "#FFFFFF",
-    fontSize: 18,
-    fontWeight: "800",
-  },
-
-  summarySubtitle: {
-    color: "#E8F3FF",
-    fontSize: 13,
-    marginTop: 5,
-  },
-
-  summaryNumberContainer: {
-    alignItems: "center",
-  },
-
-  summaryNumber: {
-    color: "#FFFFFF",
-    fontSize: 32,
-    fontWeight: "900",
-  },
-
-  summaryLabel: {
-    color: "#E8F3FF",
-    fontSize: 12,
-  },
-
-  statsRow: {
-    flexDirection: "row",
-    gap: 10,
-    marginBottom: 26,
-  },
-
-  statCard: {
-    flex: 1,
-    backgroundColor: "#FFFFFF",
-    borderRadius: 18,
-    padding: 14,
-    elevation: 1,
-  },
-
-  statIcon: {
-    fontSize: 20,
-    marginBottom: 8,
-  },
-
-  statNumber: {
-    fontSize: 21,
-    fontWeight: "800",
-    color: "#18202A",
-  },
-
-  statLabel: {
-    fontSize: 11,
-    color: "#727A84",
-    marginTop: 3,
-  },
-
-  sectionHeader: {
-    flexDirection: "row",
-    alignItems: "center",
-    marginBottom: 12,
-  },
-
-  sectionTitle: {
-    fontSize: 19,
-    fontWeight: "800",
-    color: "#18202A",
-  },
-
-  patientCount: {
-    marginLeft: 8,
-    backgroundColor: "#E3F2FD",
-    color: "#1976D2",
-    fontWeight: "700",
-    paddingHorizontal: 9,
-    paddingVertical: 3,
-    borderRadius: 10,
-    fontSize: 12,
-  },
-
-  searchContainer: {
-    backgroundColor: "#FFFFFF",
-    borderRadius: 15,
-    height: 52,
-    flexDirection: "row",
-    alignItems: "center",
-    paddingHorizontal: 15,
-    marginBottom: 16,
-    elevation: 1,
-  },
-
-  searchIcon: {
-    fontSize: 18,
-    marginRight: 8,
-  },
-
-  searchInput: {
-    flex: 1,
-    fontSize: 15,
-    color: "#18202A",
-  },
-
-  patientCard: {
-    backgroundColor: "#FFFFFF",
-    borderRadius: 20,
-    padding: 17,
-    marginBottom: 15,
-    elevation: 2,
-  },
-
-  patientTop: {
-    flexDirection: "row",
-    alignItems: "center",
-  },
-
-  avatar: {
-    width: 50,
-    height: 50,
-    borderRadius: 25,
-    backgroundColor: "#E3F2FD",
-    alignItems: "center",
-    justifyContent: "center",
-    marginRight: 12,
-  },
-
-  avatarText: {
-    fontSize: 20,
-    fontWeight: "800",
-    color: "#1976D2",
-  },
-
-  patientInfo: {
-    flex: 1,
-  },
-
-  patientName: {
-    fontSize: 16,
-    fontWeight: "800",
-    color: "#18202A",
-  },
-
-  patientDetails: {
-    fontSize: 13,
-    color: "#727A84",
-    marginTop: 4,
-  },
-
-  statusBadge: {
-    paddingHorizontal: 9,
-    paddingVertical: 6,
-    borderRadius: 10,
-  },
-
-  statusStable: {
-    backgroundColor: "#E8F5E9",
-  },
-
-  statusWarning: {
-    backgroundColor: "#FFF3E0",
-  },
-
-  statusCritical: {
-    backgroundColor: "#FFEBEE",
-  },
-
-  statusText: {
-    fontSize: 10,
-    fontWeight: "700",
-    color: "#333333",
-  },
-
-  divider: {
-    height: 1,
-    backgroundColor: "#ECEFF1",
-    marginVertical: 15,
-  },
-
-  patientMetrics: {
-    gap: 9,
-  },
-
-  metric: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
-  },
-
-  metricLabel: {
-    color: "#7A828C",
-    fontSize: 12,
-  },
-
-  metricValue: {
-    color: "#18202A",
-    fontSize: 13,
-    fontWeight: "700",
-  },
-
-  appointmentText: {
-    color: "#1976D2",
-    fontSize: 12,
-    fontWeight: "700",
-    maxWidth: 180,
-    textAlign: "right",
-  },
-
-  alertBox: {
-    marginTop: 14,
-    backgroundColor: "#FFF8E1",
-    borderRadius: 12,
-    padding: 11,
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 9,
-  },
-
-  alertIcon: {
-    fontSize: 18,
-  },
-
-  alertTitle: {
-    fontSize: 11,
-    fontWeight: "800",
-    color: "#8A6500",
-  },
-
-  alertText: {
-    fontSize: 12,
-    color: "#725600",
-    marginTop: 2,
-  },
-
-  viewProfile: {
-    marginTop: 15,
-    alignItems: "flex-end",
-  },
-
-  viewProfileText: {
-    color: "#1976D2",
-    fontSize: 13,
-    fontWeight: "800",
-  },
-
-  emptyContainer: {
-    backgroundColor: "#FFFFFF",
-    borderRadius: 18,
-    padding: 30,
-    alignItems: "center",
-  },
-
-  emptyIcon: {
-    fontSize: 32,
-    marginBottom: 10,
-  },
-
-  emptyTitle: {
-    fontSize: 16,
-    fontWeight: "800",
-    color: "#18202A",
-  },
-
-  emptyText: {
-    fontSize: 13,
-    color: "#727A84",
-    textAlign: "center",
-    marginTop: 5,
-  },
-
-  quickActions: {
-    flexDirection: "row",
-    flexWrap: "wrap",
-    gap: 10,
-    marginTop: 12,
-  },
-
-  quickAction: {
-    width: "48%",
-    backgroundColor: "#FFFFFF",
-    borderRadius: 17,
-    padding: 17,
-    alignItems: "center",
-    elevation: 1,
-  },
-
-  quickIcon: {
-    fontSize: 24,
-    marginBottom: 7,
-  },
-
-  quickText: {
-    fontSize: 13,
-    fontWeight: "700",
-    color: "#303840",
-  },
+  safeArea: { flex: 1, backgroundColor: "#F5F7FA" },
+  centrado: { justifyContent: "center", alignItems: "center" },
+  container: { padding: 20, paddingBottom: 40 },
+  header: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginBottom: 22 },
+  welcome: { fontSize: 14, color: "#68707A", marginBottom: 4 },
+  doctorName: { fontSize: 26, fontWeight: "800", color: "#18202A" },
+  notificationButton: { width: 46, height: 46, borderRadius: 23, backgroundColor: "#FFFFFF", alignItems: "center", justifyContent: "center", elevation: 2 },
+  notificationIcon: { fontSize: 21 },
+  summaryCard: { backgroundColor: "#1E88E5", borderRadius: 22, padding: 20, flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginBottom: 16 },
+  summaryTitle: { color: "#FFFFFF", fontSize: 18, fontWeight: "800" },
+  summarySubtitle: { color: "#E8F3FF", fontSize: 13, marginTop: 5 },
+  summaryNumberContainer: { alignItems: "center" },
+  summaryNumber: { color: "#FFFFFF", fontSize: 32, fontWeight: "900" },
+  summaryLabel: { color: "#E8F3FF", fontSize: 12 },
+  statsRow: { flexDirection: "row", gap: 10, marginBottom: 26 },
+  statCard: { flex: 1, backgroundColor: "#FFFFFF", borderRadius: 18, padding: 14, elevation: 1 },
+  statIcon: { fontSize: 20, marginBottom: 8 },
+  statNumber: { fontSize: 21, fontWeight: "800", color: "#18202A" },
+  statLabel: { fontSize: 11, color: "#727A84", marginTop: 3 },
+  sectionHeader: { flexDirection: "row", alignItems: "center", marginBottom: 12 },
+  sectionTitle: { fontSize: 19, fontWeight: "800", color: "#18202A" },
+  patientCount: { marginLeft: 8, backgroundColor: "#E3F2FD", color: "#1976D2", fontWeight: "700", paddingHorizontal: 9, paddingVertical: 3, borderRadius: 10, fontSize: 12 },
+  searchContainer: { backgroundColor: "#FFFFFF", borderRadius: 15, height: 52, flexDirection: "row", alignItems: "center", paddingHorizontal: 15, marginBottom: 16, elevation: 1 },
+  searchIcon: { fontSize: 18, marginRight: 8 },
+  searchInput: { flex: 1, fontSize: 15, color: "#18202A" },
+  patientCard: { backgroundColor: "#FFFFFF", borderRadius: 20, padding: 17, marginBottom: 15, elevation: 2 },
+  patientTop: { flexDirection: "row", alignItems: "center" },
+  avatar: { width: 50, height: 50, borderRadius: 25, backgroundColor: "#E3F2FD", alignItems: "center", justifyContent: "center", marginRight: 12 },
+  avatarText: { fontSize: 20, fontWeight: "800", color: "#1976D2" },
+  patientInfo: { flex: 1 },
+  patientName: { fontSize: 16, fontWeight: "800", color: "#18202A" },
+  patientDetails: { fontSize: 13, color: "#727A84", marginTop: 4 },
+  statusBadge: { paddingHorizontal: 9, paddingVertical: 6, borderRadius: 10 },
+  statusStable: { backgroundColor: "#E8F5E9" },
+  statusWarning: { backgroundColor: "#FFF3E0" },
+  statusText: { fontSize: 10, fontWeight: "700", color: "#333333" },
+  divider: { height: 1, backgroundColor: "#ECEFF1", marginVertical: 15 },
+  patientMetrics: { gap: 9 },
+  metric: { flexDirection: "row", justifyContent: "space-between", alignItems: "center" },
+  metricLabel: { color: "#7A828C", fontSize: 12 },
+  appointmentText: { color: "#1976D2", fontSize: 12, fontWeight: "700", maxWidth: 180, textAlign: "right" },
+  alertBox: { marginTop: 14, backgroundColor: "#FFF8E1", borderRadius: 12, padding: 11, flexDirection: "row", alignItems: "center", gap: 9 },
+  alertIcon: { fontSize: 18 },
+  alertTitle: { fontSize: 11, fontWeight: "800", color: "#8A6500" },
+  alertText: { fontSize: 12, color: "#725600", marginTop: 2 },
+  viewProfile: { marginTop: 15, alignItems: "flex-end" },
+  viewProfileText: { color: "#1976D2", fontSize: 13, fontWeight: "800" },
+  emptyContainer: { backgroundColor: "#FFFFFF", borderRadius: 18, padding: 30, alignItems: "center" },
+  emptyIcon: { fontSize: 32, marginBottom: 10 },
+  emptyTitle: { fontSize: 16, fontWeight: "800", color: "#18202A" },
+  emptyText: { fontSize: 13, color: "#727A84", textAlign: "center", marginTop: 5 },
+  quickActions: { flexDirection: "row", flexWrap: "wrap", gap: 10, marginTop: 12 },
+  quickAction: { width: "48%", backgroundColor: "#FFFFFF", borderRadius: 17, padding: 17, alignItems: "center", elevation: 1 },
+  quickIcon: { fontSize: 24, marginBottom: 7 },
+  quickText: { fontSize: 13, fontWeight: "700", color: "#303840" },
 });

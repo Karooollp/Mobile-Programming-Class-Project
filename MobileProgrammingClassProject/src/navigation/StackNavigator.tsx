@@ -8,6 +8,8 @@ import HistorialScreen from "../screens/historialScreen";
 import { View, Text } from "react-native"; 
 import TabNavigator from "./TabNavigator";
 import DoctorTabNavigator from "./DoctorTabNavigator";
+import DoctorPatientProfileScreen from "../screens/Doctor/DoctorPatientProfileScreen";
+
 function MainTabsPlaceholder() {
   return (
     <View style={{ flex: 1, justifyContent: "center", alignItems: "center", backgroundColor: "#F8FAFC" }}>
@@ -30,6 +32,7 @@ export type RootStackParamList = {
   Profile: undefined;
   EditProfile: undefined;
   Historial: undefined;
+   DoctorPatientProfile: { patientId: string };
 };
 
 const Stack = createNativeStackNavigator<RootStackParamList>();
@@ -44,6 +47,7 @@ export default function StackNavigator() {
       <Stack.Screen name="Profile" component={ProfileScreen} />
       <Stack.Screen name="EditProfile" component={EditProfileScreen} />
       <Stack.Screen name="Historial" component={HistorialScreen} />
+      <Stack.Screen name="DoctorPatientProfile" component={DoctorPatientProfileScreen} />
     </Stack.Navigator>
   );
 }
