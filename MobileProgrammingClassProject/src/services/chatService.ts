@@ -83,9 +83,6 @@ export const guardarMensajeDB = async (mensaje: ChatMessage) => {
 
 // 3. Finalizar consulta IA, guardar el resumen, y mandarlo también al chat
 //    del doctor (Opción B) para que quede persistente y no solo en un Alert.
-//    sessionIdDoctor es opcional: si el paciente todavía no tiene sesión con
-//    un doctor asignado, el resumen queda solo en chat_sessions.summary y se
-//    reenvía cuando exista sesión (o el doctor lo lee ahí directamente).
 export const finalizarSesionConResumen = async (
   sessionIdIA: string,
   resumen: string,
@@ -112,15 +109,34 @@ export const finalizarSesionConResumen = async (
 };
 
 // 4. Suscripción realtime a mensajes nuevos de una sesión.
-//    CORREGIDO: antes solo hacía console.log del mensaje entrante y nunca
-//    actualizaba el estado de React. Ahora recibe un callback que el
-//    componente pasa (normalmente algo como setMensajes(prev => [...prev, msg]))
-//    y sí se ejecuta con cada INSERT nuevo.
+//
+//    CORREGIDO (bug nuevo encontrado): Supabase.channel(topic) reutiliza un
+//    canal existente si ya hay uno con ese mismo "topic" registrado en el
+//    cliente (por ejemplo, uno que quedó huérfano de una apertura anterior
+//    del chat, de un Fast Refresh, o de no haberse desuscrito bien al salir
+//    de la pantalla). Si ese canal viejo ya estaba subscribe()-ado, llamar
+//    .on(...) sobre él para agregar un nuevo callback truena con:
+//    "cannot add `postgres_changes` callbacks ... after `subscribe()`".
+//    Eso deja la suscripción nueva a medias (o inexistente), y por eso
+//    a veces los mensajes no llegan en tiempo real aunque el código "se vea"
+//    correcto. La solución: antes de crear el canal, buscar y remover
+//    cualquier canal previo con el mismo topic.
 export const suscribirAMensajesDeSesion = (
   sessionId: string,
   onNuevoMensaje: (msg: ChatMessage) => void
 ): RealtimeChannel => {
-  const channel = Supabase.channel(`chat_${sessionId}`)
+  const topic = `chat_${sessionId}`;
+
+  // Supabase antepone "realtime:" al nombre del topic internamente, por
+  // eso comparamos contra ese prefijo.
+  const canalViejo = Supabase.getChannels().find(
+    (c) => c.topic === `realtime:${topic}`
+  );
+  if (canalViejo) {
+    Supabase.removeChannel(canalViejo);
+  }
+
+  const channel = Supabase.channel(topic)
     .on(
       "postgres_changes",
       {

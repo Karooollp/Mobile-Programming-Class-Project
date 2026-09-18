@@ -37,6 +37,8 @@ import {
   ChatMessage,
 } from "../services/chatService";
 import { getAssignedDoctor } from "../services/doctorService";
+// NUEVO: para subir la foto a Storage antes de guardar el mensaje del doctor.
+import { uploadChatImage } from "../services/storageService";
 
 interface Mensaje {
   id: string;
@@ -71,6 +73,7 @@ export default function ChatScreen() {
   // Sesiones independientes en BD
   const [sessionIdIA, setSessionIdIA] = useState<string | null>(null);
   const [sessionIdDoctor, setSessionIdDoctor] = useState<string | null>(null);
+  
 
   // CHATS SEPARADOS: Un array para la IA y otro para el Doctor
   const [mensajesIA, setMensajesIA] = useState<Mensaje[]>([
@@ -143,7 +146,8 @@ export default function ChatScreen() {
           sesionDoc = await crearSesionChat(miId, "doctor", asignado?.doctor_id ?? undefined);
         }
         setSessionIdDoctor(sesionDoc.id);
-
+        console.log("🟦 PACIENTE sessionIdDoctor:", sesionDoc.id);
+        
         const historialDoctor = await getMensajesDeSesion(sesionDoc.id);
         if (historialDoctor.length > 0) {
           setMensajesDoctor(historialDoctor.map(chatMessageAMensaje));
@@ -352,16 +356,25 @@ export default function ChatScreen() {
 
     // MODO DOCTOR (Agrega al chat del doctor y guarda en BD)
     if (esModoDoctor) {
+      // Mostramos la burbuja de inmediato con la URI local (tu propio
+      // teléfono sí puede leerla), pero lo que se GUARDA en la base de
+      // datos debe ser una URL pública de Storage: el doctor está en otro
+      // dispositivo y jamás podrá abrir un "file://" que vive en tu celular.
       setMensajesDoctor((prev) => [...prev, nuevoMensajeUsuario]);
 
       if (sessionIdDoctor) {
         try {
+          let imageUrlSubida: string | undefined;
+          if (fotoParaEnviar) {
+            imageUrlSubida = await uploadChatImage(sessionIdDoctor, pacienteId, fotoParaEnviar.uri);
+          }
+
           await guardarMensajeDB({
             session_id: sessionIdDoctor,
             sender_type: "patient",
             sender_id: pacienteId,
             content: textoUsuario,
-            image_url: fotoParaEnviar?.uri
+            image_url: imageUrlSubida
           });
         } catch (error) {
           console.error("Error guardando mensaje al doctor:", error);

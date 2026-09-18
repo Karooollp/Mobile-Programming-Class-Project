@@ -7,17 +7,21 @@ import {
   KeyboardAvoidingView,
   Platform,
   ActivityIndicator,
+  Image,
   TouchableOpacity,
   Alert,
+  ActionSheetIOS,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
+import * as ImagePicker from "expo-image-picker";
 import type { RealtimeChannel } from "@supabase/supabase-js";
 
 import { Supabase } from "../../lib/Supabase";
 import CustomInput from "../../components/CustomInput";
 import CustomButton from "../../components/CustomButton";
 import { getMyPatients } from "../../services/doctorService";
+import { uploadChatImage } from "../../services/storageService";
 import {
   getSesionActiva,
   crearSesionChat,
@@ -41,6 +45,7 @@ type PatientRow = {
 interface Mensaje {
   id: string;
   texto?: string;
+  imagenUrl?: string;
   remitente: "patient" | "ia" | "doctor";
   esResumenIA?: boolean;
 }
@@ -49,6 +54,7 @@ function chatMessageAMensaje(msg: ChatMessage): Mensaje {
   return {
     id: msg.id ?? Date.now().toString(),
     texto: msg.content ?? undefined,
+    imagenUrl: msg.image_url ?? undefined,
     remitente: msg.sender_type,
     esResumenIA: msg.sender_type === "ia",
   };
@@ -68,6 +74,8 @@ export default function DoctorChatScreen() {
   const [mensajes, setMensajes] = useState<Mensaje[]>([]);
   const [nuevoMensaje, setNuevoMensaje] = useState("");
   const [cargandoChat, setCargandoChat] = useState(false);
+  const [enviando, setEnviando] = useState(false);
+  const [imagenTemporal, setImagenTemporal] = useState<ImagePicker.ImagePickerAsset | null>(null);
 
   const flatListRef = useRef<FlatList>(null);
   const canalRef = useRef<RealtimeChannel | null>(null);
@@ -119,7 +127,8 @@ export default function DoctorChatScreen() {
           sesion = await crearSesionChat(paciente.patient_id, "doctor", doctorId);
         }
         setSessionId(sesion.id);
-
+        console.log("🟩 DOCTOR sessionId:", sesion.id);
+        
         const historial = await getMensajesDeSesion(sesion.id);
         setMensajes(historial.map(chatMessageAMensaje));
 
@@ -147,31 +156,88 @@ export default function DoctorChatScreen() {
     setPacienteSeleccionado(null);
     setSessionId(null);
     setMensajes([]);
+    setImagenTemporal(null);
+  };
+
+  // Adjuntar imágenes — mismo patrón de ChatScreen.tsx del paciente.
+  const mostrarMenuAdjuntar = () => {
+    if (enviando) return;
+    const opciones = ["Tomar Foto (Cámara)", "Elegir de la Galería", "Cancelar"];
+    const botonCancelarIndice = 2;
+    if (Platform.OS === "ios") {
+      ActionSheetIOS.showActionSheetWithOptions(
+        { options: opciones, cancelButtonIndex: botonCancelarIndice, title: "Adjuntar contenido", message: "¿De dónde quieres obtener la foto?" },
+        (buttonIndex) => {
+          if (buttonIndex === 0) abrirCamaraEnVivo();
+          if (buttonIndex === 1) abrirGaleriaFotos();
+        }
+      );
+    } else {
+      Alert.alert("Adjuntar contenido", "¿De dónde quieres obtener la foto?", [
+        { text: "Cámara", onPress: abrirCamaraEnVivo },
+        { text: "Galería", onPress: abrirGaleriaFotos },
+        { text: "Cancelar", style: "cancel" }
+      ], { cancelable: true });
+    }
+  };
+
+  const abrirCamaraEnVivo = async () => {
+    const permiso = await ImagePicker.requestCameraPermissionsAsync();
+    if (!permiso.granted) { Alert.alert("Permisos necesarios", "Necesitamos acceso a tu cámara."); return; }
+    const resultado = await ImagePicker.launchCameraAsync({ mediaTypes: ['images'], quality: 0.4 });
+    if (!resultado.canceled && resultado.assets[0]) {
+      setImagenTemporal(resultado.assets[0]);
+    }
+  };
+
+  const abrirGaleriaFotos = async () => {
+    const permiso = await ImagePicker.requestMediaLibraryPermissionsAsync();
+    if (!permiso.granted) { Alert.alert("Permisos necesarios", "Ocupamos acceso a tus fotos."); return; }
+    const resultado = await ImagePicker.launchImageLibraryAsync({ mediaTypes: ['images'], quality: 0.4 });
+    if (!resultado.canceled && resultado.assets[0]) {
+      setImagenTemporal(resultado.assets[0]);
+    }
   };
 
   const enviarMensaje = async () => {
     const texto = nuevoMensaje.trim();
-    if (!texto || !sessionId || !doctorId) return;
+    if ((!texto && !imagenTemporal) || !sessionId || !doctorId) return;
+
+    const fotoParaEnviar = imagenTemporal;
 
     const mensajeLocal: Mensaje = {
       id: Date.now().toString(),
-      texto,
       remitente: "doctor",
+      ...(texto ? { texto } : {}),
+      // Mostramos la foto de inmediato con la URI local: en tu propio
+      // teléfono sí es válida. Lo que se guarda en la BD (abajo) es la URL
+      // pública ya subida, para que el paciente pueda verla en el suyo.
+      ...(fotoParaEnviar ? { imagenUrl: fotoParaEnviar.uri } : {}),
     };
     setMensajes((prev) => [...prev, mensajeLocal]);
     setNuevoMensaje("");
+    setImagenTemporal(null);
+    setEnviando(true);
     hacerScrollAlFinal();
 
     try {
+      let imageUrlSubida: string | undefined;
+      if (fotoParaEnviar) {
+        imageUrlSubida = await uploadChatImage(sessionId, doctorId, fotoParaEnviar.uri);
+      }
+
       await guardarMensajeDB({
         session_id: sessionId,
         sender_type: "doctor",
         sender_id: doctorId,
         content: texto,
+        image_url: imageUrlSubida,
       });
     } catch (error) {
       console.error("Error enviando mensaje del doctor:", error);
       Alert.alert("Error", "No se pudo enviar el mensaje.");
+    } finally {
+      setEnviando(false);
     }
   };
 
@@ -254,20 +320,45 @@ export default function DoctorChatScreen() {
                   ]}
                 >
                   {item.esResumenIA && <Text style={styles.resumenLabel}>📋 Resumen automático (IA)</Text>}
-                  <Text style={item.remitente === "doctor" ? styles.textoDoctor : styles.textoOtro}>
-                    {item.texto}
-                  </Text>
+                  {item.imagenUrl && <Image source={{ uri: item.imagenUrl }} style={styles.imagenMensaje} />}
+                  {item.texto && (
+                    <Text style={item.remitente === "doctor" ? styles.textoDoctor : styles.textoOtro}>
+                      {item.texto}
+                    </Text>
+                  )}
                 </View>
               </View>
             )}
           />
         )}
 
+        {enviando && (
+          <View style={styles.loadingContainer}>
+            <ActivityIndicator size="small" color="#1E88E5" />
+            <Text style={styles.loadingText}>Enviando...</Text>
+          </View>
+        )}
+
+        {imagenTemporal && (
+          <View style={styles.previewWrapper}>
+            <View style={styles.imageContainerRelative}>
+              <Image source={{ uri: imagenTemporal.uri }} style={styles.previewImagen} />
+              <TouchableOpacity style={styles.deletePreviewButton} onPress={() => setImagenTemporal(null)}>
+                <Text style={styles.deletePreviewText}>✕</Text>
+              </TouchableOpacity>
+            </View>
+            <Text style={styles.waitingText}>Imagen en espera para enviar</Text>
+          </View>
+        )}
+
         <View style={styles.inputBar}>
+          <TouchableOpacity style={styles.plusButton} onPress={mostrarMenuAdjuntar}>
+            <Text style={styles.plusIcon}>+</Text>
+          </TouchableOpacity>
           <View style={{ flex: 1 }}>
             <CustomInput
               type="text"
-              placeholder="Escribe una respuesta..."
+              placeholder={imagenTemporal ? "Comenta la foto..." : "Escribe una respuesta..."}
               value={nuevoMensaje}
               onChange={setNuevoMensaje}
             />
@@ -329,6 +420,10 @@ const styles = StyleSheet.create({
   resumenLabel: { fontSize: 11, fontWeight: "800", color: "#8A6500", marginBottom: 4 },
   textoDoctor: { color: "#FFFFFF", fontSize: 15 },
   textoOtro: { color: "#18202A", fontSize: 15 },
+  imagenMensaje: { width: 220, height: 160, borderRadius: 12, marginBottom: 6, resizeMode: "cover" },
+
+  loadingContainer: { flexDirection: "row", alignItems: "center", paddingHorizontal: 20, paddingVertical: 8, gap: 8 },
+  loadingText: { fontSize: 13, fontStyle: "italic", color: "#727A84" },
 
   inputBar: {
     flexDirection: "row",
@@ -339,4 +434,13 @@ const styles = StyleSheet.create({
     borderColor: "#ECEFF1",
     backgroundColor: "#FFFFFF",
   },
+  plusButton: { height: 40, width: 40, borderRadius: 20, justifyContent: "center", alignItems: "center", borderWidth: 1, borderColor: "#ECEFF1", backgroundColor: "#F5F7FA" },
+  plusIcon: { fontSize: 22, fontWeight: "300", marginTop: -2, color: "#727A84" },
+
+  previewWrapper: { padding: 12, flexDirection: "row", alignItems: "center", borderTopWidth: 1, borderColor: "#ECEFF1", gap: 12, backgroundColor: "#FFFFFF" },
+  imageContainerRelative: { position: "relative", width: 60, height: 60 },
+  previewImagen: { width: 60, height: 60, borderRadius: 8, resizeMode: "cover" },
+  deletePreviewButton: { backgroundColor: "rgba(0,0,0,0.7)", width: 20, height: 20, borderRadius: 10, justifyContent: "center", alignItems: "center", position: "absolute", top: -6, right: -6, zIndex: 10 },
+  deletePreviewText: { color: "#fff", fontSize: 10, fontWeight: "bold" },
+  waitingText: { fontSize: 13, fontStyle: "italic", color: "#727A84" },
 });

@@ -3,8 +3,8 @@ import { View, Text, TouchableOpacity, Alert, ActivityIndicator, ScrollView } fr
 import DateTimePicker from "@react-native-community/datetimepicker";
 import CustomInput from "../components/CustomInput";
 import { Supabase } from "../lib/Supabase";
-import { useCaremapHealth } from "../contexts/CaremapHealthContexts"; 
-import { validateAge, validatePhone, validateText, validateGender, validateBloodType, GENDERS, BLOOD_TYPES } from "../utils/validators/profileValidator";
+import { useCaremapHealth } from "../contexts/CaremapHealthContexts";
+import { validatePhone, validateText, validateGender, validateBloodType, GENDERS, BLOOD_TYPES } from "../utils/validators/profileValidator";
 import CardProfile, { useSharedStyles } from "../components/CardProfile";
 import { uploadImage, uploadDocument } from "../services/storageService";
 import * as DocumentPicker from "expo-document-picker";
@@ -13,46 +13,59 @@ import PhotoPicker from "../components/PhotoPicker";
 import { useAppDispatch, useAppSelector } from "../store/hooks";
 import { updateProfile as updateProfileRedux } from "../store/slices/userProfileSlice";
 
+// Calcula la edad a partir de la fecha de nacimiento (año actual - año nacimiento,
+// ajustando -1 si todavía no ha pasado el cumpleaños este año)
+function calculateAge(birthDate: Date): number {
+  const today = new Date();
+  let age = today.getFullYear() - birthDate.getFullYear();
+  const monthDiff = today.getMonth() - birthDate.getMonth();
+  const dayDiff = today.getDate() - birthDate.getDate();
+
+  if (monthDiff < 0 || (monthDiff === 0 && dayDiff < 0)) {
+    age--;
+  }
+
+  return age;
+}
+
 export default function EditProfileScreen({ navigation }: any) {
   const sharedStyles = useSharedStyles();
   const dispatch = useAppDispatch();
-  
-  const { colors } = useCaremapHealth(); 
-  
+
+  const { colors } = useCaremapHealth();
+
   const profile = useAppSelector((state) => state.userProfile.data);
 
   const [showBloodTypes, setShowBloodTypes] = useState(false);
   const [showDatePicker, setShowDatePicker] = useState(false);
-  
-  const [firstName, setFirstName] = useState(profile?.first_Name ?? "");
-  const [lastName, setLastName] = useState(profile?.last_Name ?? "");
+
+  const [firstName, setFirstName] = useState(profile?.first_name ?? "");
+  const [lastName, setLastName] = useState(profile?.last_name ?? "");
   const [email, setEmail] = useState(profile?.email ?? "");
-  const [age, setAge] = useState(profile?.age?.toString() ?? "");
   const [phone, setPhone] = useState(profile?.phone ?? "");
   const [address, setAddress] = useState(profile?.address ?? "");
   const [gender, setGender] = useState(profile?.gender ?? "");
-  const [bloodType, setBloodType] = useState(profile?.bloodType ?? "");
-  const [emergency, setEmergency] = useState(profile?.emergencyContact ?? "");
-  const [photo, setPhoto] = useState<string | null>(profile?.photoUrl ?? null);
-  const [birthDate, setBirthDate] = useState<Date | null>(profile?.birthDate ? new Date(profile.birthDate) : null);
+  const [bloodType, setBloodType] = useState(profile?.blood_type ?? "");
+  const [emergency, setEmergency] = useState(profile?.emergency_contact ?? "");
+  const [photo, setPhoto] = useState<string | null>(profile?.photo_url ?? null);
+  const [birthDate, setBirthDate] = useState<Date | null>(profile?.birth_date ? new Date(profile.birth_date) : null);
   const [document, setDocument] = useState<DocumentPicker.DocumentPickerAsset | null>(null);
   const [loading, setLoading] = useState(false);
 
-  const [errors, setErrors] = useState({ age: "", phone: "", address: "", emergency: "", gender: "", bloodType: "" });
+  const [errors, setErrors] = useState({ phone: "", address: "", emergency: "", gender: "", bloodType: "" });
 
   useEffect(() => {
     if (profile) {
-      setFirstName(profile.first_Name ?? "");
-      setLastName(profile.last_Name ?? "");
+      setFirstName(profile.first_name ?? "");
+      setLastName(profile.last_name ?? "");
       setEmail(profile.email ?? "");
-      setAge(profile.age?.toString() ?? "");
       setPhone(profile.phone ?? "");
       setAddress(profile.address ?? "");
       setGender(profile.gender ?? "");
-      setBloodType(profile.bloodType ?? "");
-      setEmergency(profile.emergencyContact ?? "");
-      setPhoto(profile.photoUrl ?? null);
-      setBirthDate(profile.birthDate ? new Date(profile.birthDate) : null);
+      setBloodType(profile.blood_type ?? "");
+      setEmergency(profile.emergency_contact ?? "");
+      setPhoto(profile.photo_url ?? null);
+      setBirthDate(profile.birth_date ? new Date(profile.birth_date) : null);
     }
   }, [profile]);
 
@@ -61,7 +74,6 @@ export default function EditProfileScreen({ navigation }: any) {
     if (selectedDate) setBirthDate(selectedDate);
   };
 
-  const handleAge = (value: string) => { setAge(value); setErrors((p) => ({ ...p, age: validateAge(value) || "" })); };
   const handlePhone = (value: string) => { setPhone(value); setErrors((p) => ({ ...p, phone: validatePhone(value) || "" })); };
   const handleAddress = (value: string) => { setAddress(value); setErrors((p) => ({ ...p, address: validateText(value, "Dirección") || "" })); };
   const handleEmergency = (value: string) => { setEmergency(value); setErrors((p) => ({ ...p, emergency: validateText(value, "Contacto de emergencia") || "" })); };
@@ -74,8 +86,11 @@ export default function EditProfileScreen({ navigation }: any) {
   };
 
   const handleSave = async () => {
+    if (!birthDate) {
+      return Alert.alert("Error", "Selecciona tu fecha de nacimiento");
+    }
+
     const validations = {
-      age: validateAge(age),
       phone: validatePhone(phone),
       address: validateText(address, "Dirección"),
       emergency: validateText(emergency, "Contacto de emergencia"),
@@ -83,7 +98,7 @@ export default function EditProfileScreen({ navigation }: any) {
       bloodType: validateBloodType(bloodType),
     };
 
-    setErrors({ age: validations.age || "", phone: validations.phone || "", address: validations.address || "", emergency: validations.emergency || "", gender: validations.gender || "", bloodType: validations.bloodType || "" });
+    setErrors({ phone: validations.phone || "", address: validations.address || "", emergency: validations.emergency || "", gender: validations.gender || "", bloodType: validations.bloodType || "" });
     if (Object.values(validations).some(Boolean)) return Alert.alert("Error", "Corrige los campos marcados");
 
     try {
@@ -91,48 +106,55 @@ export default function EditProfileScreen({ navigation }: any) {
       const { data: { user } } = await Supabase.auth.getUser();
       if (!user) return Alert.alert("Error", "Usuario no autenticado");
 
-      let imageUrl = profile?.photoUrl || null;
+      let imageUrl = profile?.photo_url || null;
 
       if (photo?.startsWith("file")) {
         imageUrl = await uploadImage(user.id, photo);
       }
 
-      let documentUrl: string | null = profile?.birthCertificateUrl || null;
+      let documentUrl: string | null = profile?.birth_certificate_url || null;
       if (document) {
         const result = await uploadDocument(user.id, document);
         documentUrl = result ?? null;
       }
 
+      // La edad ya no la escribe el usuario: se calcula aquí mismo a partir de birthDate
+      const age = calculateAge(birthDate);
+
       dispatch(
         updateProfileRedux({
-          first_Name: firstName,
-          last_Name: lastName,
+          first_name: firstName,
+          last_name: lastName,
           email,
-          age: Number(age),
-          phone,
-          address,
-          gender,
-          bloodType: bloodType,
-          emergencyContact: emergency,
-          photoUrl: imageUrl,
-          birthDate: birthDate ? birthDate.toISOString() : null,
-          birthCertificateUrl: documentUrl,
-          profileCompleted: true,
-        })
-      );
-
-      // Guardamos en la Base de Datos con los nombres de columna de Postgres (snake_case habitualmente)
-      const { error } = await Supabase
-        .from("users")
-        .update({
-          age: Number(age),
+          age,
           phone,
           address,
           gender,
           blood_type: bloodType,
           emergency_contact: emergency,
           photo_url: imageUrl,
-          birth_date: birthDate?.toISOString(),
+          birth_date: birthDate.toISOString(),
+          birth_certificate_url: documentUrl,
+          profile_completed: true,
+        })
+      );
+
+      // Guardamos en la Base de Datos con los nombres de columna de Postgres (snake_case)
+      const { error } = await Supabase
+        .from("users")
+        .update({
+          first_name: firstName,
+          last_name: lastName,
+          age,
+          phone,
+          address,
+          gender,
+          blood_type: bloodType,
+          emergency_contact: emergency,
+          photo_url: imageUrl,
+          birth_date: birthDate.toISOString(),
+          birth_certificate_url: documentUrl,
+          profile_completed: true,
         })
         .eq("user_id", user.id);
 
@@ -164,8 +186,6 @@ export default function EditProfileScreen({ navigation }: any) {
 
         <View style={sharedStyles.cardSection}>
           <Text style={[sharedStyles.sectionTitle, { color: colors.textPrimary }]}>Datos Generales</Text>
-          <CustomInput type="number" placeholder="Edad" value={age} onChange={handleAge} />
-          {!!errors.age && <Text style={sharedStyles.error}>{errors.age}</Text>}
           <CustomInput type="number" placeholder="Teléfono" value={phone} onChange={handlePhone} />
           {!!errors.phone && <Text style={sharedStyles.error}>{errors.phone}</Text>}
           <CustomInput placeholder="Dirección" value={address} onChange={handleAddress} />
@@ -177,7 +197,13 @@ export default function EditProfileScreen({ navigation }: any) {
           <TouchableOpacity style={[sharedStyles.inputBox, { backgroundColor: colors.background, borderColor: colors.border }]} onPress={() => setShowDatePicker(true)}>
             <Text style={{ color: colors.textPrimary }}>{birthDate ? birthDate.toLocaleDateString() : "Seleccionar fecha"}</Text>
           </TouchableOpacity>
-          {showDatePicker && <DateTimePicker value={birthDate || new Date()} mode="date" onChange={handleBirthDateChange} />}
+          {showDatePicker && <DateTimePicker value={birthDate || new Date()} mode="date" onChange={handleBirthDateChange} maximumDate={new Date()} />}
+
+          {birthDate && (
+            <Text style={{ color: colors.textSecondary, marginTop: 8 }}>
+              Edad: {calculateAge(birthDate)} años
+            </Text>
+          )}
         </View>
 
         <View style={sharedStyles.cardSection}>
