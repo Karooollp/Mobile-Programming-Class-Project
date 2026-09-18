@@ -1,5 +1,6 @@
 import React, { createContext, useContext, useState } from "react";
 import { useColorScheme } from "react-native";
+import { useAppSelector } from "../store/hooks";
 
 export const PaletaColores = {
   light: {
@@ -21,6 +22,9 @@ export const PaletaColores = {
     cardShadow: "#000",
   },
 };
+
+// Mismo UUID que ya usa ProfileScreen.tsx para identificar el rol de doctor
+const DOCTOR_ROLE_ID = "3639b033-377c-496f-8cc9-bf6c70d5ccc0";
 
 type CaremapHealthContextsType = {
   isDarkMode: boolean;
@@ -50,10 +54,24 @@ export const CaremapHealthProvider = ({
 }) => {
   const systemScheme = useColorScheme();
 
-  const [isDarkMode, setIsDarkMode] = useState(systemScheme === "dark");
+  const [manualDarkMode, setManualDarkMode] = useState(systemScheme === "dark");
+
+  // El modo oscuro es un "servicio" solo para pacientes. Si el perfil logueado
+  // es doctor, ignoramos tanto el toggle manual como el modo oscuro del sistema
+  // del celular, y forzamos modo claro siempre.
+  const profile = useAppSelector((state) => state.userProfile.data);
+  const isDoctor =
+    profile?.role_name?.toLowerCase() === "doctor" ||
+    profile?.roles_id === DOCTOR_ROLE_ID;
+
+  const isDarkMode = isDoctor ? false : manualDarkMode;
 
   const toggleTheme = () => {
-    setIsDarkMode((prev) => !prev);
+    // No-op para doctores: aunque no tengan el botón en pantalla, esto evita
+    // que cualquier otro lugar del código que llame a toggleTheme() les meta
+    // modo oscuro por accidente.
+    if (isDoctor) return;
+    setManualDarkMode((prev) => !prev);
   };
 
   const colors = isDarkMode ? PaletaColores.dark : PaletaColores.light;
