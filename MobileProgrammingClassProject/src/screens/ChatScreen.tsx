@@ -55,6 +55,7 @@ function chatMessageAMensaje(msg: ChatMessage): Mensaje {
     texto: msg.content ?? undefined,
     imagenUrl: msg.image_url ?? undefined,
     remitente: msg.sender_type === "patient" ? "usuario" : msg.sender_type,
+    mostrarBotonFinalizar: msg.sender_type === "ia",
   };
 }
 
