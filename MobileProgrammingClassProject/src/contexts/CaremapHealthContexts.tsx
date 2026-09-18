@@ -9,7 +9,7 @@ export const PaletaColores = {
     textSecondary: "#64748B",
     border: "#E2E8F0",
     primary: "#0284C7",
-    cardShadow: "#000",
+    cardShadow: "#000", 
   },
   dark: {
     background: "#0F172A",

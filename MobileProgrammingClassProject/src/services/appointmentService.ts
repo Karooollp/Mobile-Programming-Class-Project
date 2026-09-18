@@ -21,7 +21,9 @@ export async function fetchDoctors() {
     console.error("Error obteniendo médicos:", error);
     throw error;
   }
-  
+
+  console.log("RAW users con roles:", JSON.stringify(data, null, 2));
+
   return (data ?? [])
     .filter((user: any) => user.roles?.role_name === "Doctor")
     .map((doctor: any) => ({
@@ -108,7 +110,7 @@ export async function addAppointment(
         appointment_date: appointmentDate,
         location: location ?? null,
         attended: false,
-        status: "pending",
+        status: "scheduled",
       },
     ])
     .select()

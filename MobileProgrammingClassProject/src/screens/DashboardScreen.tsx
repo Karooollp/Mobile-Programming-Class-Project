@@ -28,6 +28,7 @@ import {
   fetchNextAppointment,
   fetchAppointmentsRange,
   addAppointment,
+  fetchDoctors,
 } from "../services/appointmentService";
 import {
   solicitarPermisosNotificaciones,
@@ -97,11 +98,12 @@ type PendingDose = {
   scheduledTime: string;
 };
 
-type Doctor = {
-  user_id: string;
-  first_name: string;
-  last_name: string;
-  specialty?: string;
+  type Doctor = {
+  id: string;
+  name: string;
+  firstName: string;
+  lastName: string;
+  photoUrl?: string | null;
 };
 
 function formatTime(date: Date): string {
@@ -148,13 +150,11 @@ export default function DashboardScreen({ navigation }: any) {
     loadDoctors();
   }, []);
 
-  const loadDoctors = async () => {
+    const loadDoctors = async () => {
     try {
-      setDoctorsList([
-        { user_id: "doc-1", first_name: "Dr. Carlos", last_name: "Mendoza", specialty: "Medicina General" },
-        { user_id: "doc-2", first_name: "Dra. Ana", last_name: "Martínez", specialty: "Pediatría" },
-        { user_id: "doc-3", first_name: "Dr. Roberto", last_name: "Gómez", specialty: "Cardiología" },
-      ]);
+      const doctors = await fetchDoctors();
+      console.log("DOCTORES CARGADOS:", JSON.stringify(doctors, null, 2));
+      setDoctorsList(doctors);
     } catch (e) {
       console.log("Error cargando médicos:", e);
     }
@@ -442,7 +442,7 @@ export default function DashboardScreen({ navigation }: any) {
       return Alert.alert("Campo incompleto", "Por favor selecciona un médico de la lista.");
     }
 
-    const doctorFullName = `${selectedDoctor.first_name} ${selectedDoctor.last_name}`;
+    const doctorFullName = selectedDoctor.name;
 
     const doctorApptsSameDay = appointmentsRange.filter((a) => {
       const sameDoctor = a.doctorName === doctorFullName;
@@ -470,6 +470,7 @@ export default function DashboardScreen({ navigation }: any) {
     try {
       const nuevaCita = await addAppointment(
         userId,
+        selectedDoctor.id,
         doctorFullName,
         apptReason.trim(),
         apptDate.toISOString()
@@ -554,8 +555,17 @@ export default function DashboardScreen({ navigation }: any) {
         </Text>
 
         <TouchableOpacity
-          style={[styles.actionButton, { backgroundColor: colors.primary }]}
-          onPress={() => (pendingDoses.length > 0 ? setShowDoseModal(true) : Alert.alert("Dosis completas", "Ya tomaste todas tus dosis de hoy."))}
+          style={[
+           styles.actionButton,
+           { backgroundColor: colors.primary },
+           totalDosisHoy === 0 && styles.actionButtonDisabled,
+         ]}
+         disabled={totalDosisHoy === 0}
+         onPress={() =>
+           pendingDoses.length > 0
+             ? setShowDoseModal(true)
+             : Alert.alert("Dosis completas", "Ya tomaste todas tus dosis de hoy.")
+         }
         >
           <Text style={styles.actionButtonText}>+ Registrar Dosis Tomada</Text>
         </TouchableOpacity>
@@ -1001,7 +1011,7 @@ export default function DashboardScreen({ navigation }: any) {
             >
               <Text style={{ color: selectedDoctor ? colors.textPrimary : colors.textSecondary }}>
                 {selectedDoctor
-                  ? `${selectedDoctor.first_name} ${selectedDoctor.last_name} ${selectedDoctor.specialty ? `(${selectedDoctor.specialty})` : ''}`
+                  ? selectedDoctor.name
                   : "Selecciona un médico..."}
               </Text>
               <Text style={{ color: colors.textSecondary }}>{showDoctorDropdown ? "▲" : "▼"}</Text>
@@ -1011,19 +1021,14 @@ export default function DashboardScreen({ navigation }: any) {
               <View style={[styles.dropdownList, { borderColor: colors.border, backgroundColor: colors.surface }]}>
                 {doctorsList.map((doc) => (
                   <TouchableOpacity
-                    key={doc.user_id}
+                    key={doc.id}
                     style={[styles.dropdownItem, { borderBottomColor: colors.border }]}
                     onPress={() => {
                       setSelectedDoctor(doc);
                       setShowDoctorDropdown(false);
                     }}
                   >
-                    <Text style={{ color: colors.textPrimary, fontWeight: "600" }}>
-                      {doc.first_name} {doc.last_name}
-                    </Text>
-                    {doc.specialty && (
-                      <Text style={{ color: colors.textSecondary, fontSize: 12 }}>{doc.specialty}</Text>
-                    )}
+                    <Text style={{ color: colors.textPrimary, fontWeight: "600" }}>{doc.name}</Text>
                   </TouchableOpacity>
                 ))}
               </View>
@@ -1121,6 +1126,7 @@ const getStyles = (colors: any) =>
     cardSmall: { flex: 1 },
     metricValueSmall: { fontSize: 24, fontWeight: "700", marginBottom: 4 },
     actionButton: { marginTop: 10, paddingVertical: 10, borderRadius: 8, alignItems: "center" },
+    actionButtonDisabled: { opacity: 0.4 },
     actionButtonText: { color: "#FFFFFF", fontSize: 14, fontWeight: "600" },
     actionButtonSecondary: { marginTop: 10, paddingVertical: 10, borderRadius: 8, alignItems: "center", borderWidth: 1.5 },
     actionButtonSecondaryText: { fontSize: 14, fontWeight: "600" },

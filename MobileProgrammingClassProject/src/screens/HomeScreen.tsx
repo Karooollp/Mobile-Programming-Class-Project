@@ -4,6 +4,7 @@ import { useCaremapHealth } from "../contexts/CaremapHealthContexts";
 import { useAppSelector } from "../store/hooks";
 import { fetchMedications, fetchTodayLogs } from "../services/medicationService";
 import { fetchNextAppointment } from "../services/appointmentService";
+import { useFocusEffect } from "@react-navigation/native";
 
 // Saludo según la hora del día — un detalle chico pero le quita lo "meh".
 function getSaludo(): string {
@@ -42,9 +43,11 @@ export default function HomeScreen({ navigation }: any) {
     }
   }, [userId]);
 
-  useEffect(() => {
+useFocusEffect(
+  useCallback(() => {
     loadHomeData();
-  }, [loadHomeData]);
+  }, [loadHomeData])
+);
 
   // Mismo cálculo que en DashboardScreen: total de dosis programadas y cuántas
   // faltan hoy. med.scheduleTimes ya viene garantizado como array real gracias
@@ -84,7 +87,7 @@ export default function HomeScreen({ navigation }: any) {
       contentContainerStyle={styles.content}
     >
       <Text style={[styles.greeting, { color: colors.textPrimary }]}>
-        {getSaludo()}{profile?.first_Name ? `, ${profile.first_Name}` : ""} 👋
+        {getSaludo()}{profile?.first_name ? `, ${profile.first_name}` : ""} 👋
       </Text>
       <Text style={[styles.subtitle, { color: colors.textSecondary }]}>Aquí tienes un resumen de tu día</Text>
 

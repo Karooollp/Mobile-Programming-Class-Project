@@ -1,5 +1,6 @@
 // services/doctorService.ts
 import { Supabase } from "../lib/Supabase";
+import { ScheduleConfig } from "../utils/types/scheduleHelper";
 
 // ============================================================================
 // PACIENTES ASIGNADOS
@@ -176,7 +177,8 @@ export async function assignMedication(
   patientId: string,
   name: string,
   dosage: string,
-  scheduleTimes: string[]
+  scheduleTimes: string[],
+  config?: ScheduleConfig
 ) {
   const { data, error } = await Supabase
     .from("medications")
@@ -187,7 +189,10 @@ export async function assignMedication(
         name,
         dosage,
         schedule_times: scheduleTimes,
-        frequency_type: "CUSTOM",
+        frequency_type: config?.type ?? "CUSTOM",
+        interval_hours: config?.intervalHours ?? null,
+        times_per_day: config?.timesPerDay ?? null,
+        start_time: config?.startTime ?? null,
       },
     ])
     .select()
@@ -243,6 +248,19 @@ export async function getAlertsForDoctor(doctorId: string) {
     patient: mapaPacientes.get(alerta.user_id) ?? null,
   }));
 }
+
+  // Marca una alerta como atendida (no se borra, solo se guarda cuándo se
+  // resolvió). resolved_at = null significa "todavía pendiente".
+  export async function marcarAlertaComoAtendida(alertaId: string) {
+    const { data, error } = await Supabase
+      .from("emergency_alerts")
+      .update({ resolved_at: new Date().toISOString() })
+      .eq("id", alertaId)
+      .select()
+      .single();
+    if (error) throw error;
+    return data;
+  }
 // Próximas citas programadas del doctor (todas, sin filtrar por paciente
 // individual), para poder mostrar "próxima cita" en cada tarjeta del Home.
 export async function getUpcomingAppointmentsForDoctor(doctorId: string) {
@@ -300,6 +318,7 @@ export async function getDoctorDashboardSummary(doctorId: string) {
           .from("emergency_alerts")
           .select("id", { count: "exact", head: true })
           .in("user_id", idsPacientes)
+          .is("resolved_at", null)
       : Promise.resolve({ count: 0, error: null } as any),
   ]);
 

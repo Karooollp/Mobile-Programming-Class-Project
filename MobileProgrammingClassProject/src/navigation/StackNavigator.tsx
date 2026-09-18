@@ -9,6 +9,7 @@ import { View, Text } from "react-native";
 import TabNavigator from "./TabNavigator";
 import DoctorTabNavigator from "./DoctorTabNavigator";
 import DoctorPatientProfileScreen from "../screens/Doctor/DoctorPatientProfileScreen";
+import DoctorAlertDetailScreen from "../screens/Doctor/DoctorAlertDetailScreen";
 
 function MainTabsPlaceholder() {
   return (
@@ -32,7 +33,8 @@ export type RootStackParamList = {
   Profile: undefined;
   EditProfile: undefined;
   Historial: undefined;
-   DoctorPatientProfile: { patientId: string };
+  DoctorPatientProfile: { patientId: string };
+  DoctorAlertDetail: { alert: any };
 };
 
 const Stack = createNativeStackNavigator<RootStackParamList>();
@@ -48,6 +50,7 @@ export default function StackNavigator() {
       <Stack.Screen name="EditProfile" component={EditProfileScreen} />
       <Stack.Screen name="Historial" component={HistorialScreen} />
       <Stack.Screen name="DoctorPatientProfile" component={DoctorPatientProfileScreen} />
+      <Stack.Screen name="DoctorAlertDetail" component={DoctorAlertDetailScreen} />
     </Stack.Navigator>
   );
 }

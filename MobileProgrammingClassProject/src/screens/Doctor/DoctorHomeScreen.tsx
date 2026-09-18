@@ -89,6 +89,7 @@ export default function DoctorHomeScreen({ navigation }: any) {
       const mapaAlertas: Record<string, string> = {};
       for (const alerta of alertas as any[]) {
         if (!idsAsignados.has(alerta.user_id)) continue; // 👈 el fix: ignora alertas de pacientes que no son míos
+        if (alerta.resolved_at) continue; // ya atendida, no mostrar en el Home
         if (!mapaAlertas[alerta.user_id]) {
           mapaAlertas[alerta.user_id] = alerta.note ?? "Alerta de emergencia";
         }
