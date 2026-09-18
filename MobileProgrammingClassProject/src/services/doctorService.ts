@@ -42,9 +42,7 @@ export async function assignPatientToMe(doctorId: string, patientId: string) {
 }
 
 // Búsqueda de pacientes NO asignados aún, por nombre o email, para el flujo
-// de "agregar paciente". Requiere que el doctor pueda leer `users` en general;
-// si solo quieres que busque entre pacientes con roles_id de Paciente, filtra
-// también por roles_id aquí.
+// de "agregar paciente". 
 export async function searchAssignablePatients(
   doctorId: string,
   searchText: string,
@@ -206,11 +204,6 @@ export async function assignMedication(
 // ============================================================================
 
 export async function getAlertsForDoctor(doctorId: string) {
-  // Primero, los IDs de los pacientes que SÍ son míos. No confiamos en que
-  // RLS ya lo filtre solo — lo hacemos explícito aquí, porque
-  // emergency_alerts no tiene columna doctor_id (solo user_id del paciente),
-  // así que sin este paso cualquier doctor vería las alertas de TODOS los
-  // pacientes de la app.
   const { data: misPacientes, error: pacientesError } = await Supabase
     .from("doctor_patients")
     .select("patient_id")
@@ -221,7 +214,7 @@ export async function getAlertsForDoctor(doctorId: string) {
   const idsPacientes = (misPacientes ?? []).map((p) => p.patient_id);
   if (idsPacientes.length === 0) return [];
 
-  // 1. Traer solo las alertas de esos pacientes.
+  // Traer solo las alertas de esos pacientes.
   const { data: alertas, error: alertasError } = await Supabase
     .from("emergency_alerts")
     .select("*")
@@ -230,9 +223,6 @@ export async function getAlertsForDoctor(doctorId: string) {
   if (alertasError) throw alertasError;
   if (!alertas || alertas.length === 0) return [];
 
-  // 2. Traer los perfiles de esos pacientes en una sola query aparte,
-  //    porque no existe una FK directa emergency_alerts -> public.users
-  //    (la FK real es contra auth.users, PostgREST no puede autounir eso).
   const { data: pacientes, error: perfilesError } = await Supabase
     .from("users")
     .select("user_id, first_name, last_name, photo_url")
@@ -241,16 +231,13 @@ export async function getAlertsForDoctor(doctorId: string) {
 
   const mapaPacientes = new Map(pacientes.map((p) => [p.user_id, p]));
 
-  // 3. Combinar manualmente, con la misma forma que antes (patient: {...})
-  //    para no romper el código que ya consume esta función.
   return alertas.map((alerta) => ({
     ...alerta,
     patient: mapaPacientes.get(alerta.user_id) ?? null,
   }));
 }
 
-  // Marca una alerta como atendida (no se borra, solo se guarda cuándo se
-  // resolvió). resolved_at = null significa "todavía pendiente".
+  // Marca una alerta como atendida
   export async function marcarAlertaComoAtendida(alertaId: string) {
     const { data, error } = await Supabase
       .from("emergency_alerts")
@@ -261,8 +248,8 @@ export async function getAlertsForDoctor(doctorId: string) {
     if (error) throw error;
     return data;
   }
-// Próximas citas programadas del doctor (todas, sin filtrar por paciente
-// individual), para poder mostrar "próxima cita" en cada tarjeta del Home.
+
+// Próximas citas programadas del doctor 
 export async function getUpcomingAppointmentsForDoctor(doctorId: string) {
   const { data, error } = await Supabase
     .from("appointments")
@@ -285,9 +272,6 @@ export async function getDoctorDashboardSummary(doctorId: string) {
   const endOfDay = new Date();
   endOfDay.setHours(23, 59, 59, 999);
 
-  // 🔒 Igual que en getAlertsForDoctor: emergency_alerts no tiene doctor_id,
-  // solo user_id del paciente. Sin este paso, el conteo de abajo contaría
-  // las alertas de TODOS los pacientes de la app, no solo los míos.
   const { data: misPacientes, error: pacientesIdsError } = await Supabase
     .from("doctor_patients")
     .select("patient_id")
@@ -309,10 +293,7 @@ export async function getDoctorDashboardSummary(doctorId: string) {
       .eq("doctor_id", doctorId)
       .gte("appointment_date", startOfDay.toISOString())
       .lte("appointment_date", endOfDay.toISOString()),
-    // 🔒 El fix: solo contamos alertas de mis pacientes asignados.
-    // Si no tengo pacientes, ni siquiera hacemos la consulta (evita un
-    // .in() con arreglo vacío, que en PostgREST no siempre se comporta
-    // como uno esperaría).
+   
     idsPacientes.length > 0
       ? Supabase
           .from("emergency_alerts")

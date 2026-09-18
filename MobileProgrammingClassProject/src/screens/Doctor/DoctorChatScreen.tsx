@@ -26,6 +26,7 @@ import { uploadChatImage } from "../../services/storageService";
 import {
   getSesionActiva,
   crearSesionChat,
+  asignarDoctorASesion,
   getMensajesDeSesion,
   guardarMensajeDB,
   suscribirAMensajesDeSesion,
@@ -146,6 +147,8 @@ export default function DoctorChatScreen() {
         let sesion = await getSesionActiva(paciente.patient_id, "doctor");
         if (!sesion) {
           sesion = await crearSesionChat(paciente.patient_id, "doctor", doctorId);
+        } else if (!sesion.doctor_id) {
+          sesion = await asignarDoctorASesion(sesion.id, doctorId);
         }
         setSessionId(sesion.id);
         console.log("🟩 DOCTOR sessionId:", sesion.id);

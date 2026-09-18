@@ -1,12 +1,6 @@
 import { Supabase } from "../lib/Supabase";
 import { ScheduleConfig } from "../utils/types/scheduleHelper";
 
-// schedule_times puede llegar de Supabase de dos formas distintas según cómo
-// esté tipada la columna: si es "jsonb" o "text[]" llega ya como array real;
-// si es "text" (guardando el JSON como texto plano), llega como string.
-// Esta función normaliza ambos casos a un array real, para que el resto de
-// la app (totales, progreso, dosis pendientes en el Dashboard) nunca reciba
-// algo que no sea un arreglo.
 function parseScheduleTimes(raw: unknown): string[] {
   if (Array.isArray(raw)) return raw as string[];
   if (typeof raw === "string") {

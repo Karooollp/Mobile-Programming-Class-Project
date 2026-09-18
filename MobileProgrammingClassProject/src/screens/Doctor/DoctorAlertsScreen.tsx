@@ -5,12 +5,12 @@ import {
   StyleSheet,
   ScrollView,
   TouchableOpacity,
-  SafeAreaView,
   ActivityIndicator,
   RefreshControl,
   Alert,
 } from "react-native";
 import { Supabase } from "../../lib/Supabase";
+import { SafeAreaView } from "react-native-safe-area-context";
 import { getAlertsForDoctor, marcarAlertaComoAtendida } from "../../services/doctorService";
 
 // Lo que devuelve getAlertsForDoctor: la fila de "emergency_alerts" + el

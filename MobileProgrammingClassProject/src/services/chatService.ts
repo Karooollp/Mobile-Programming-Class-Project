@@ -37,6 +37,21 @@ export const crearSesionChat = async (
   return data;
 };
 
+// Si una sesión tipo "doctor" fue creada por el paciente antes de que
+// algún doctor la abriera, queda con doctor_id en null. La primera vez
+// que un doctor entra a esa conversación, se le asigna aquí.
+export const asignarDoctorASesion = async (sessionId: string, doctorId: string) => {
+  const { data, error } = await Supabase
+    .from("chat_sessions")
+    .update({ doctor_id: doctorId })
+    .eq("id", sessionId)
+    .select()
+    .single();
+
+  if (error) throw error;
+  return data;
+};
+
 // Trae la sesión activa de un tipo para un paciente, o null si no hay.
 // Útil para no crear una sesión nueva cada vez que se abre el chat.
 export const getSesionActiva = async (

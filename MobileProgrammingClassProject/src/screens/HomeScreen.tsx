@@ -49,18 +49,16 @@ useFocusEffect(
   }, [loadHomeData])
 );
 
-  // Mismo cálculo que en DashboardScreen: total de dosis programadas y cuántas
-  // faltan hoy. med.scheduleTimes ya viene garantizado como array real gracias
-  // a parseScheduleTimes() en medicationService.
   const totalDosisHoy = medications.reduce(
     (sum, med) => sum + med.scheduleTimes.length,
     0
   );
-  const dosisTomadasHoy = todayLogs.length;
+  const dosisTomadasHoy = todayLogs.filter((log) =>
+  medications.some((med) => med.id === log.medication_id)
+).length;
   const pendientesHoy = totalDosisHoy - dosisTomadasHoy;
 
-  // Próximas dosis pendientes de hoy, para mostrar algo concreto en vez de
-  // solo un número — esto es lo que hace que la pantalla se sienta útil.
+  // Próximas dosis pendientes de hoy
   const proximasDosis = medications
     .flatMap((med) =>
       med.scheduleTimes
@@ -72,7 +70,6 @@ useFocusEffect(
     )
     .sort((a, b) => a.hora.localeCompare(b.hora))
     .slice(0, 3);
-
   if (loading) {
     return (
       <View style={[styles.screen, { backgroundColor: colors.background, justifyContent: "center", alignItems: "center" }]}>
@@ -91,11 +88,6 @@ useFocusEffect(
       </Text>
       <Text style={[styles.subtitle, { color: colors.textSecondary }]}>Aquí tienes un resumen de tu día</Text>
 
-      {/* Acciones rápidas: esto es lo que la pantalla no tenía — un salto
-          directo a hacer algo, en vez de solo leer texto.
-          Nota: "Métricas" es el nombre real de la pestaña del Dashboard
-          dentro de TabNavigator.tsx (no "Dashboard"). "Historial" vive en
-          el Stack padre (StackNavigator.tsx), no como pestaña. */}
       <View style={styles.quickActionsRow}>
         <TouchableOpacity
           style={[styles.quickAction, { backgroundColor: colors.surface }]}

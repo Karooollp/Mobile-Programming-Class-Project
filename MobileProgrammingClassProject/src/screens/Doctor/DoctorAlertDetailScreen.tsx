@@ -5,12 +5,11 @@ import {
   StyleSheet,
   ScrollView,
   TouchableOpacity,
-  SafeAreaView,
   ActivityIndicator,
   Alert,
 } from "react-native";
 import { marcarAlertaComoAtendida } from "../../services/doctorService";
-
+import { SafeAreaView } from "react-native-safe-area-context";
 type EmergencyAlert = {
   id: string;
   user_id: string;
