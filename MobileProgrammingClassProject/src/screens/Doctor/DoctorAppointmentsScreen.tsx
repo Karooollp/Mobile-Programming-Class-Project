@@ -11,7 +11,9 @@ import {
   Alert,
   FlatList,
   SafeAreaView,
+  Platform,
 } from 'react-native';
+import DateTimePicker from '@react-native-community/datetimepicker';
 import { Supabase } from '../../lib/Supabase';
 import {
   getDoctorAppointments,
@@ -97,7 +99,11 @@ export default function DoctorAppointmentsScreen() {
 
   // Formulario para agregar cita
   const [selectedPatientId, setSelectedPatientId] = useState<string | null>(null);
-  const [timeText, setTimeText] = useState('09:00');
+  // 🔁 Antes esto era un texto libre ("09:00") en un TextInput. Ahora
+  // guardamos directamente un objeto Date (solo nos importan sus horas y
+  // minutos) y lo llenamos con el selector nativo de hora.
+  const [horaSeleccionada, setHoraSeleccionada] = useState<Date>(new Date());
+  const [mostrarPicker, setMostrarPicker] = useState(false);
   const [reasonText, setReasonText] = useState('');
   const [locationText, setLocationText] = useState('');
   const [saving, setSaving] = useState(false);
@@ -203,10 +209,27 @@ export default function DoctorAppointmentsScreen() {
 
   const abrirModalParaAgregar = () => {
     setSelectedPatientId(patients[0]?.patient_id ?? null);
-    setTimeText('09:00');
+
+    // Hora por defecto al abrir el modal: 9:00 AM. El picker solo lee las
+    // horas y minutos de este Date, el día/mes/año no importan aquí.
+    const horaPorDefecto = new Date();
+    horaPorDefecto.setHours(9, 0, 0, 0);
+    setHoraSeleccionada(horaPorDefecto);
+    setMostrarPicker(false);
+
     setReasonText('');
     setLocationText('');
     setModalVisible(true);
+  };
+
+  // Se llama cuando el usuario mueve el selector de hora nativo.
+  const onCambiarHora = (event: any, seleccionada?: Date) => {
+    // En Android el picker se cierra solo tras elegir; en iOS lo dejamos
+    // visible tipo "spinner" embebido en el modal.
+    setMostrarPicker(Platform.OS === 'ios');
+    if (event.type === 'set' && seleccionada) {
+      setHoraSeleccionada(seleccionada);
+    }
   };
 
   const guardarCita = async () => {
@@ -215,11 +238,9 @@ export default function DoctorAppointmentsScreen() {
       Alert.alert('Falta el paciente', 'Selecciona un paciente para la cita.');
       return;
     }
-    const [horas, minutos] = timeText.split(':').map((n) => parseInt(n, 10));
-    if (isNaN(horas) || isNaN(minutos)) {
-      Alert.alert('Hora inválida', 'Usa el formato HH:MM, por ejemplo 09:30.');
-      return;
-    }
+
+    const horas = horaSeleccionada.getHours();
+    const minutos = horaSeleccionada.getMinutes();
 
     const fechaCita = new Date(selectedDate);
     fechaCita.setHours(horas, minutos, 0, 0);
@@ -466,14 +487,28 @@ export default function DoctorAppointmentsScreen() {
               )}
             </ScrollView>
 
-            <Text style={styles.etiqueta}>Hora (HH:MM)</Text>
-            <TextInput
-              style={styles.input}
-              value={timeText}
-              onChangeText={setTimeText}
-              placeholder="09:00"
-              keyboardType="numbers-and-punctuation"
-            />
+            <Text style={styles.etiqueta}>Hora</Text>
+            {/* 🔁 Antes era un TextInput libre ("09:00"). Ahora es un botón
+                que abre el reloj nativo del teléfono — ya no se puede
+                escribir una hora inválida. */}
+            <TouchableOpacity style={styles.botonHora} onPress={() => setMostrarPicker(true)}>
+              <Text style={styles.textoBotonHora}>
+                {horaSeleccionada.toLocaleTimeString('es-MX', {
+                  hour: '2-digit',
+                  minute: '2-digit',
+                })}
+              </Text>
+            </TouchableOpacity>
+
+            {mostrarPicker && (
+              <DateTimePicker
+                value={horaSeleccionada}
+                mode="time"
+                is24Hour={false}
+                display={Platform.OS === 'ios' ? 'spinner' : 'default'}
+                onChange={onCambiarHora}
+              />
+            )}
 
             <Text style={styles.etiqueta}>Motivo (opcional)</Text>
             <TextInput
@@ -632,6 +667,15 @@ const styles = StyleSheet.create({
     paddingVertical: 10,
     fontSize: 15,
   },
+  botonHora: {
+    borderWidth: 1,
+    borderColor: '#e5e7eb',
+    borderRadius: 8,
+    paddingHorizontal: 12,
+    paddingVertical: 12,
+    alignItems: 'flex-start',
+  },
+  textoBotonHora: { fontSize: 15, color: '#111827', fontWeight: '600' },
   filaBotonesModal: { flexDirection: 'row', marginTop: 20, gap: 10 },
   botonModal: {
     flex: 1,

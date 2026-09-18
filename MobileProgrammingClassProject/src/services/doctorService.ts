@@ -267,6 +267,18 @@ export async function getDoctorDashboardSummary(doctorId: string) {
   const endOfDay = new Date();
   endOfDay.setHours(23, 59, 59, 999);
 
+  // 🔒 Igual que en getAlertsForDoctor: emergency_alerts no tiene doctor_id,
+  // solo user_id del paciente. Sin este paso, el conteo de abajo contaría
+  // las alertas de TODOS los pacientes de la app, no solo los míos.
+  const { data: misPacientes, error: pacientesIdsError } = await Supabase
+    .from("doctor_patients")
+    .select("patient_id")
+    .eq("doctor_id", doctorId)
+    .eq("status", "active");
+  if (pacientesIdsError) throw pacientesIdsError;
+
+  const idsPacientes = (misPacientes ?? []).map((p) => p.patient_id);
+
   const [patients, todayAppointments, alerts] = await Promise.all([
     Supabase
       .from("doctor_patients")
@@ -279,9 +291,16 @@ export async function getDoctorDashboardSummary(doctorId: string) {
       .eq("doctor_id", doctorId)
       .gte("appointment_date", startOfDay.toISOString())
       .lte("appointment_date", endOfDay.toISOString()),
-    Supabase
-      .from("emergency_alerts")
-      .select("id", { count: "exact", head: true }),
+    // 🔒 El fix: solo contamos alertas de mis pacientes asignados.
+    // Si no tengo pacientes, ni siquiera hacemos la consulta (evita un
+    // .in() con arreglo vacío, que en PostgREST no siempre se comporta
+    // como uno esperaría).
+    idsPacientes.length > 0
+      ? Supabase
+          .from("emergency_alerts")
+          .select("id", { count: "exact", head: true })
+          .in("user_id", idsPacientes)
+      : Promise.resolve({ count: 0, error: null } as any),
   ]);
 
   if (patients.error) throw patients.error;

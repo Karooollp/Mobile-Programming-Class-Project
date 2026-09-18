@@ -1,7 +1,7 @@
 import { Ionicons, MaterialIcons } from "@expo/vector-icons";
 import { useState } from "react";
 import { Text, TextInput, TouchableOpacity, View, StyleSheet, KeyboardTypeOptions } from "react-native";
-import { get } from "react-native/Libraries/TurboModule/TurboModuleRegistry";
+
 type Props={
     type?: "text"|"email"|"password"|"number"| "phone";
     placeholder: string;

@@ -14,6 +14,7 @@ import {
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
+import { useFocusEffect } from "@react-navigation/native";
 import * as ImagePicker from "expo-image-picker";
 import type { RealtimeChannel } from "@supabase/supabase-js";
 
@@ -80,7 +81,20 @@ export default function DoctorChatScreen() {
   const flatListRef = useRef<FlatList>(null);
   const canalRef = useRef<RealtimeChannel | null>(null);
 
-  // Cargar el doctor autenticado y su lista de pacientes.
+  // Traer la lista de pacientes asignados. Separado en su propia función
+  // para poder llamarla tanto al montar como cada vez que la pantalla
+  // recupera el foco (fix de "lista stale").
+  const cargarPacientes = useCallback(async (id: string) => {
+    try {
+      const lista = await getMyPatients(id);
+      setPacientes(lista as unknown as PatientRow[]);
+    } catch (error) {
+      console.error("Error cargando pacientes del doctor:", error);
+      Alert.alert("Error", "No se pudo cargar tu lista de pacientes.");
+    }
+  }, []);
+
+  // Cargar el doctor autenticado y su lista de pacientes (una sola vez, al montar).
   useEffect(() => {
     const init = async () => {
       try {
@@ -90,12 +104,7 @@ export default function DoctorChatScreen() {
           return;
         }
         setDoctorId(authData.user.id);
-
-        const lista = await getMyPatients(authData.user.id);
-        setPacientes(lista as unknown as PatientRow[]);
-      } catch (error) {
-        console.error("Error cargando pacientes del doctor:", error);
-        Alert.alert("Error", "No se pudo cargar tu lista de pacientes.");
+        await cargarPacientes(authData.user.id);
       } finally {
         setCargandoLista(false);
       }
@@ -105,7 +114,19 @@ export default function DoctorChatScreen() {
     return () => {
       desuscribirCanal(canalRef.current);
     };
-  }, []);
+  }, [cargarPacientes]);
+
+  // 🔁 Fix de "lista stale": recargar la lista de pacientes cada vez que
+  // esta pestaña vuelve a tener foco, pero SOLO si estás viendo la lista
+  // (no mientras estás dentro de una conversación abierta, para no
+  // interrumpirte el chat).
+  useFocusEffect(
+    useCallback(() => {
+      if (doctorId && !pacienteSeleccionado) {
+        cargarPacientes(doctorId);
+      }
+    }, [doctorId, pacienteSeleccionado, cargarPacientes])
+  );
 
   const hacerScrollAlFinal = () => {
     setTimeout(() => flatListRef.current?.scrollToEnd({ animated: true }), 100);
